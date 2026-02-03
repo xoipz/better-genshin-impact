@@ -418,6 +418,8 @@ public partial class ScriptService : IScriptService
                 }
             });
         
+        // 清理所有HTML浮窗
+        HtmlPanel.CloseAll();
 
         // 还原定时器
         TaskTriggerDispatcher.Instance().SetTriggers(GameTaskManager.LoadInitialTriggers());
