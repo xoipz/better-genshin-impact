@@ -123,9 +123,9 @@
                 </Grid>
             </Border>
             
-            <!-- WebView2容器 (标题栏覆盖在上方) -->
-            <Border Margin="0"
-                    CornerRadius="8"
+            <!-- WebView2容器 (为标题栏预留空间) -->
+            <Border Margin="0,32,0,0"
+                    CornerRadius="0,0,8,8"
                     ClipToBounds="True">
                 <wv2:WebView2 x:Name="WebView"
                               DefaultBackgroundColor="Transparent"/>

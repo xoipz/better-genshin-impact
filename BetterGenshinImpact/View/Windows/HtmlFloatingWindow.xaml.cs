@@ -23,6 +23,7 @@ public partial class HtmlFloatingWindow : Window
     private TaskCompletionSource<bool> _initializationComplete = new();
     private bool _isClosing = false;
     private DispatcherTimer? _lockButtonFadeTimer; // 锁定按钮自动淡出计时器
+    private DispatcherTimer? _focusTimer; // 焦点检测定时器
     
     public string WindowId => _windowId;
     public event Action<string>? OnWindowClosed;
@@ -37,10 +38,10 @@ public partial class HtmlFloatingWindow : Window
         Loaded += OnLoaded;
         
         // 启动焦点检测定时器（更频繁的检测以提高响应性）
-        var focusTimer = new DispatcherTimer();
-        focusTimer.Interval = TimeSpan.FromMilliseconds(100);
-        focusTimer.Tick += CheckFocus;
-        focusTimer.Start();
+        _focusTimer = new DispatcherTimer();
+        _focusTimer.Interval = TimeSpan.FromMilliseconds(100);
+        _focusTimer.Tick += CheckFocus;
+        _focusTimer.Start();
         
         // 初始化锁定按钮淡出计时器
         _lockButtonFadeTimer = new DispatcherTimer();
@@ -105,6 +106,9 @@ public partial class HtmlFloatingWindow : Window
             
             UIDispatcherHelper.Invoke(() =>
             {
+                // 检查窗口是否已关闭
+                if (_isClosing) return;
+                
                 if (_isVisible)
                 {
                     // 显示窗口
@@ -122,6 +126,7 @@ public partial class HtmlFloatingWindow : Window
                     {
                         UIDispatcherHelper.Invoke(() =>
                         {
+                            if (_isClosing) return; // 检查窗口是否已关闭
                             if (!_isVisible) // 再次检查状态，防止快速切换
                             {
                                 Visibility = Visibility.Collapsed;
@@ -600,6 +605,11 @@ public partial class HtmlFloatingWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+        _isClosing = true;
+        
+        // 停止所有定时器
+        _focusTimer?.Stop();
+        _lockButtonFadeTimer?.Stop();
         
         // 保存位置
         if (_rememberPosition)
