@@ -347,6 +347,9 @@ public partial class HtmlFloatingWindow : Window
     /// <summary>
     /// 切换穿透模式
     /// </summary>
+    /// <summary>
+    /// 切换穿透模式
+    /// </summary>
     private void ToggleClickThrough()
     {
         _isInteractive = !_isInteractive;
@@ -361,11 +364,19 @@ public partial class HtmlFloatingWindow : Window
             // 穿透模式下的简化UI
             if (_isInteractive)
             {
+                // 1. 禁用WebView命中测试，确保点击穿透到Window
+                WebView.IsHitTestVisible = false;
+                
+                // 2. 背景透明 (锁定悬浮时)
+                ContainerBorder.Background = Brushes.Transparent;
+                
+                // 3. 禁止调整大小
+                ResizeMode = ResizeMode.NoResize;
+
                 // 显示标题栏，使用完全透明背景
                 TitleBarBorder.Opacity = 1.0;
                 TitleBarBorder.Visibility = Visibility.Visible;
-                TitleBarBorder.Background = new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromArgb(0, 0, 0, 0)); // 完全透明
+                TitleBarBorder.Background = Brushes.Transparent;
                 
                 // 只显示锁定按钮，隐藏其他元素
                 TitleText.Visibility = Visibility.Collapsed;
@@ -376,10 +387,18 @@ public partial class HtmlFloatingWindow : Window
             }
             else
             {
+                // 恢复正常模式
+                WebView.IsHitTestVisible = true;
+                
+                // 给解锁的背景一个灰色的效果 (0.2) -> #33000000
+                ContainerBorder.Background = new SolidColorBrush(Color.FromArgb(51, 0, 0, 0));
+                
+                // 允许调整大小
+                ResizeMode = ResizeMode.CanResize;
+
                 // 非穿透模式：恢复完整UI
                 TitleBarBorder.Opacity = 0;
-                TitleBarBorder.Background = new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromArgb(0xCC, 0x1a, 0x1a, 0x1a));
+                TitleBarBorder.Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x1a, 0x1a, 0x1a));
                 
                 // 显示所有元素
                 TitleText.Visibility = Visibility.Visible;
