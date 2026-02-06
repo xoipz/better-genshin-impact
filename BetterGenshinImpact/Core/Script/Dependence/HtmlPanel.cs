@@ -265,14 +265,17 @@ public class HtmlPanel
     {
         UIDispatcherHelper.Invoke(() =>
         {
+            HtmlFloatingWindow? window = null;
             lock (_lock)
             {
-                if (_windows.TryGetValue(id, out var window))
-                {
-                    window.Close();
-                    _windows.Remove(id);
-                    Serilog.Log.Information("HTML浮窗已关闭: {Id}", id);
-                }
+                _windows.TryGetValue(id, out window);
+                // 不在这里移除，让 OnWindowClosed 事件处理移除
+            }
+
+            if (window != null)
+            {
+                window.Close();
+                Serilog.Log.Information("HTML浮窗已关闭: {Id}", id);
             }
         });
     }
@@ -300,32 +303,42 @@ public class HtmlPanel
 
     private void ExecuteOnWindow(string id, Action<HtmlFloatingWindow> action)
     {
+        HtmlFloatingWindow? window = null;
         lock (_lock)
         {
-            if (_windows.TryGetValue(id, out var window))
+            if (_windows.TryGetValue(id, out var w))
             {
-                try
-                {
-                    action(window);
-                }
-                catch (Exception ex)
-                {
-                    Serilog.Log.Error(ex, "HtmlPanel操作失败 [{Id}]", id);
-                }
+                window = w;
             }
-            else
+        }
+
+        if (window != null)
+        {
+            try
             {
-                Serilog.Log.Warning("HTML浮窗不存在: {Id}", id);
+                action(window);
             }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "HtmlPanel操作失败 [{Id}]", id);
+            }
+        }
+        else
+        {
+            Serilog.Log.Warning("HTML浮窗不存在: {Id}", id);
         }
     }
 
     private async Task<T?> ExecuteOnWindowAsync<T>(string id, Func<HtmlFloatingWindow, Task<T>> func)
     {
-        HtmlFloatingWindow? window;
+        HtmlFloatingWindow? window = null;
         lock (_lock)
         {
-            if (!_windows.TryGetValue(id, out window))
+            if (_windows.TryGetValue(id, out var w))
+            {
+                window = w;
+            }
+            else
             {
                 Serilog.Log.Warning("HTML浮窗不存在: {Id}", id);
                 return default;

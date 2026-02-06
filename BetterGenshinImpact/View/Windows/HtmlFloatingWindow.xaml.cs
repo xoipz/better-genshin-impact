@@ -64,51 +64,52 @@ public partial class HtmlFloatingWindow : Window
     private void CheckFocus(object? sender, EventArgs e)
     {
         if (_isClosing) return;
+        if (Application.Current == null) return; // 应用正在关闭
 
         var fgHwnd = User32.GetForegroundWindow();
         if (fgHwnd == IntPtr.Zero) return;
-        
+
         bool shouldShow = false;
         string? activeProcessName = null;
-        
-        try 
+
+        try
         {
             // 获取前台窗口进程ID
             _ = User32.GetWindowThreadProcessId(fgHwnd, out var pid);
-            var process = Process.GetProcessById((int)pid);
+            using var process = Process.GetProcessById((int)pid);
             activeProcessName = process.ProcessName.ToLower();
-            
+
             // 如果前台是原神、BGI自身、或者本悬浮窗、或者浮动按钮
             // 常见原神进程名：YuanShen, GenshinImpact
-            if (activeProcessName.Contains("yuanshen") || 
-                activeProcessName.Contains("genshin") || 
-                activeProcessName.Contains("bettergi") || 
+            if (activeProcessName.Contains("yuanshen") ||
+                activeProcessName.Contains("genshin") ||
+                activeProcessName.Contains("bettergi") ||
                 activeProcessName.Contains("bettergenshinimpact"))
             {
                 shouldShow = true;
             }
-            
+
             // 如果鼠标在窗口内，始终显示（即使前台不是原神）
             if (IsMouseOver) shouldShow = true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            // 进程访问可能失败，保守策略：默认隐藏
-            shouldShow = false;
-            // Serilog.Log.Debug(ex, "焦点检测异常");
+            // 进程访问可能失败（进程已结束等），保守策略：保持当前状态
+            return;
         }
-        
+
         // 调试日志：当可见性改变时记录原因
         if (shouldShow != _isVisible)
         {
             Serilog.Log.Information("BGI悬浮窗可见性改变: {Old} -> {New} (前台进程: {App})", _isVisible, shouldShow, activeProcessName ?? "未知");
             _isVisible = shouldShow;
-            
-            UIDispatcherHelper.Invoke(() =>
+
+            // 使用 BeginInvoke 避免阻塞定时器
+            Application.Current?.Dispatcher.BeginInvoke(() =>
             {
                 // 检查窗口是否已关闭
                 if (_isClosing) return;
-                
+
                 if (_isVisible)
                 {
                     // 显示窗口
@@ -124,7 +125,7 @@ public partial class HtmlFloatingWindow : Window
                     // 淡出后设置不可见
                     Task.Delay(200).ContinueWith(_ =>
                     {
-                        UIDispatcherHelper.Invoke(() =>
+                        Application.Current?.Dispatcher.BeginInvoke(() =>
                         {
                             if (_isClosing) return; // 检查窗口是否已关闭
                             if (!_isVisible) // 再次检查状态，防止快速切换
@@ -347,9 +348,6 @@ public partial class HtmlFloatingWindow : Window
     /// <summary>
     /// 切换穿透模式
     /// </summary>
-    /// <summary>
-    /// 切换穿透模式
-    /// </summary>
     private void ToggleClickThrough()
     {
         _isInteractive = !_isInteractive;
@@ -480,18 +478,22 @@ public partial class HtmlFloatingWindow : Window
         try
         {
             await _initializationComplete.Task;
-            // 在UI线程发起请求，获取Task，然后在当前线程等待
-            var task = Application.Current.Dispatcher.Invoke(() => 
+
+            var app = Application.Current;
+            if (app == null || _isClosing) return "null";
+
+            // 使用 InvokeAsync 避免死锁
+            var script = $"JSON.stringify(window.{varName})";
+            var result = await app.Dispatcher.InvokeAsync(async () =>
             {
-                var script = $"JSON.stringify(window.{varName})";
-                return WebView.ExecuteScriptAsync(script);
-            });
-            return await task;
+                return await WebView.ExecuteScriptAsync(script);
+            }).Task.Unwrap();
+            return result;
         }
         catch (Exception ex)
         {
             // 在关闭过程中忽略错误
-            if (!_isClosing) 
+            if (!_isClosing)
                 Serilog.Log.Error(ex, "GetGlobal失败");
             return "null";
         }
@@ -502,13 +504,16 @@ public partial class HtmlFloatingWindow : Window
         try
         {
             await _initializationComplete.Task;
-            // 在UI线程执行
-            var task = Application.Current.Dispatcher.Invoke(() => 
+
+            var app = Application.Current;
+            if (app == null || _isClosing) return;
+
+            // 使用 InvokeAsync 避免死锁
+            var script = $"window.{varName} = {jsonValue}";
+            await app.Dispatcher.InvokeAsync(async () =>
             {
-                var script = $"window.{varName} = {jsonValue}";
-                return WebView.ExecuteScriptAsync(script);
-            });
-            await task;
+                await WebView.ExecuteScriptAsync(script);
+            }).Task.Unwrap();
         }
         catch (Exception ex)
         {
@@ -522,11 +527,16 @@ public partial class HtmlFloatingWindow : Window
         try
         {
             await _initializationComplete.Task;
-            var task = Application.Current.Dispatcher.Invoke(() => 
+
+            var app = Application.Current;
+            if (app == null || _isClosing) return "null";
+
+            // 使用 InvokeAsync 避免死锁
+            var result = await app.Dispatcher.InvokeAsync(async () =>
             {
-                return WebView.ExecuteScriptAsync(expression);
-            });
-            return await task;
+                return await WebView.ExecuteScriptAsync(expression);
+            }).Task.Unwrap();
+            return result;
         }
         catch (Exception ex)
         {
@@ -574,16 +584,18 @@ public partial class HtmlFloatingWindow : Window
     {
         try
         {
-            // 暂时使用内存字典进行位置记忆
-            if (!_positionCache.ContainsKey(_windowId))
+            lock (_positionCacheLock)
             {
-                _positionCache[_windowId] = new WindowPosition();
+                if (!_positionCache.ContainsKey(_windowId))
+                {
+                    _positionCache[_windowId] = new WindowPosition();
+                }
+
+                _positionCache[_windowId].X = Left;
+                _positionCache[_windowId].Y = Top;
+                _positionCache[_windowId].Width = Width;
+                _positionCache[_windowId].Height = Height;
             }
-            
-            _positionCache[_windowId].X = Left;
-            _positionCache[_windowId].Y = Top;
-            _positionCache[_windowId].Width = Width;
-            _positionCache[_windowId].Height = Height;
         }
         catch (Exception ex)
         {
@@ -595,12 +607,15 @@ public partial class HtmlFloatingWindow : Window
     {
         try
         {
-            if (_positionCache.TryGetValue(_windowId, out var pos))
+            lock (_positionCacheLock)
             {
-                Left = pos.X;
-                Top = pos.Y;
-                Width = pos.Width;
-                Height = pos.Height;
+                if (_positionCache.TryGetValue(_windowId, out var pos))
+                {
+                    Left = pos.X;
+                    Top = pos.Y;
+                    Width = pos.Width;
+                    Height = pos.Height;
+                }
             }
         }
         catch (Exception ex)
@@ -610,6 +625,7 @@ public partial class HtmlFloatingWindow : Window
     }
 
     private static readonly System.Collections.Generic.Dictionary<string, WindowPosition> _positionCache = new();
+    private static readonly object _positionCacheLock = new();
 
     private class WindowPosition
     {
@@ -623,19 +639,27 @@ public partial class HtmlFloatingWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        base.OnClosed(e);
+        // 先设置关闭标志，避免其他代码在关闭过程中执行不必要的操作
         _isClosing = true;
-        
+
         // 停止所有定时器
         _focusTimer?.Stop();
         _lockButtonFadeTimer?.Stop();
-        
+
+        // 取消订阅应用退出事件，避免内存泄漏
+        if (Application.Current != null)
+        {
+            Application.Current.Exit -= OnAppExit;
+        }
+
+        base.OnClosed(e);
+
         // 保存位置
         if (_rememberPosition)
         {
             SavePosition();
         }
-        
+
         // 清理WebView2
         WebView?.Dispose();
     }
