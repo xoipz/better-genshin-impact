@@ -20,31 +20,49 @@
     {
         "name": "autoFight",
         "type": "checkbox",
-        "label": "启用自动战斗\n触发战斗标记时是否直接执行战斗",
+        "label": "启用自动战斗\n触发战斗标记时自动执行战斗",
+        "default": true
+    },
+    {
+        "name": "forceTpFirst",
+        "type": "checkbox",
+        "label": "首次录制起点为传送点\n第一次开始录制时自动将起点设为传送点",
         "default": true
     },
     {
         "name": "keyRecord",
         "type": "input-text",
-        "label": "录制/暂停热键\n默认: F7",
+        "label": "录制/暂停热键\n开始或暂停录制 (默认: F7)",
         "default": "F7"
+    },
+    {
+        "name": "keyRecordTp",
+        "type": "input-text",
+        "label": "录制(传送起点)热键\n开始录制并将起点设为传送点 (默认: F6)",
+        "default": "F6"
     },
     {
         "name": "keySplit",
         "type": "input-text",
-        "label": "路径分段热键\n默认: F8",
+        "label": "路径分段热键\n保存当前路径并开始新段 (默认: F8)",
         "default": "F8"
     },
     {
         "name": "keyOcr",
         "type": "input-text",
-        "label": "OCR锚点热键\n默认: F9",
+        "label": "OCR对话热键\n保存路径+OCR识别NPC+触发对话 (默认: F9)",
         "default": "F9"
     },
     {
         "name": "keyFight",
         "type": "input-text",
-        "label": "战斗标记热键\n默认: F10",
+        "label": "战斗标记热键\n保存路径+添加战斗标记 (默认: F10)",
         "default": "F10"
+    },
+    {
+        "name": "keyExport",
+        "type": "input-text",
+        "label": "导出结束热键\n保存所有数据并结束录制 (默认: F11)",
+        "default": "F11"
     }
 ]
