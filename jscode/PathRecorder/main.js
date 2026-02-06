@@ -30,11 +30,11 @@ const autoFight = settings.autoFight !== false; // 默认启用自动战斗
 
 // 快捷键配置
 const keyRecord = settings.keyRecord || "F7";      // 开始/暂停录制
-const keyRecordTp = settings.keyRecordTp || "F6";  // 开始录制(起点为传送点)
+const keyRecordTp = settings.keyRecordTp || "F4";  // 开始录制(起点为传送点)
 const keySplit = settings.keySplit || "F8";        // 路径分段
-const keyOcr = settings.keyOcr || "F9";            // OCR对话
+const keyOcr = settings.keyOcr || "F5";            // OCR对话
 const keyFight = settings.keyFight || "F10";       // 战斗标记
-const keyExport = settings.keyExport || "F11";     // 导出/结束录制
+const keyExport = settings.keyExport || "F9";      // 导出/结束录制
 
 // 游戏菜单映射 (用于检测特定界面) - 延迟获取避免加载顺序问题
 function getMenuStateMap() {

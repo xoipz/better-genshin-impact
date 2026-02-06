@@ -38,8 +38,8 @@
     {
         "name": "keyRecordTp",
         "type": "input-text",
-        "label": "录制(传送起点)热键\n开始录制并将起点设为传送点 (默认: F6)",
-        "default": "F6"
+        "label": "录制(传送起点)热键\n开始录制并将起点设为传送点 (默认: F4)",
+        "default": "F4"
     },
     {
         "name": "keySplit",
@@ -50,8 +50,8 @@
     {
         "name": "keyOcr",
         "type": "input-text",
-        "label": "OCR对话热键\n保存路径+OCR识别NPC+触发对话 (默认: F9)",
-        "default": "F9"
+        "label": "OCR对话热键\n保存路径+OCR识别NPC+触发对话 (默认: F5)",
+        "default": "F5"
     },
     {
         "name": "keyFight",
@@ -62,7 +62,7 @@
     {
         "name": "keyExport",
         "type": "input-text",
-        "label": "导出结束热键\n保存所有数据并结束录制 (默认: F11)",
-        "default": "F11"
+        "label": "导出结束热键\n保存所有数据并结束录制 (默认: F9)",
+        "default": "F9"
     }
 ]
