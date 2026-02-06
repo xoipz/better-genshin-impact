@@ -5,7 +5,7 @@
 BGI为JavaScript脚本开发提供了专门的原神游戏操作API，包括传送、地图操作、队伍管理、自动化功能等。这些方法通过`Genshin`类暴露给JavaScript环境。
 
 **相关代码位置**:
-- **核心实现**: `BetterGenshinImpact\Core\Script\Dependence\Genshin.cs` (全文411行)
+- **核心实现**: `BetterGenshinImpact\Core\Script\Dependence\Genshin.cs` (全文421行)
 - **引擎注册位置**: `EngineExtend.cs:34` - genshin对象注册
 
 ## 游戏窗口信息
@@ -1214,13 +1214,15 @@ async function autoFishingRoutine() {
 
 ## 版本信息
 
-- **文档版本**: v1.1.0
-- **最后更新**: 2026年1月18日
+- **文档版本**: v1.2.0
+- **最后更新**: 2026年2月6日
 - **适用BGI版本**: >=0.52.0
 - **维护状态**: 活跃维护
 
 ## 变更记录
 
+- v1.2.0 (2026-02-06):
+  - 📝 **更新**: 修正Genshin.cs行数标注（411行→421行）
 - v1.1.0 (2026-01-18):
   - 修正Genshin.cs文件范围（22-345 → 全文411行）
   - 添加引擎注册位置引用（EngineExtend.cs:34）

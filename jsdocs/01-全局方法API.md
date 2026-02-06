@@ -505,31 +505,6 @@ for (var i = 0; i < allPaths.length; i++) {
 ### file.writeTextSync(path, content, [append])
 同步写入文本到文件。
 
-```javascript
-// 写入配置文件
-var configData = JSON.stringify({setting: "value"}, null, 2);
-file.writeTextSync("output/config.json", configData);
-
-// 追加日志内容
-file.writeTextSync("logs/debug.log", "新的日志信息\n", true);
-```
-
-**参数**:
-- `path` (string): 文件路径，相对于脚本项目根目录
-- `content` (string): 要写入的文本内容
-- `append` (boolean, 可选): 是否追加到文件末尾，默认为false（覆盖）
-
-**返回值**: 布尔值，表示是否写入成功
-
-**安全限制**:
-- 只能写入脚本项目目录内的文件
-- 支持的文件扩展名：`.txt`, `.json`, `.log`, `.csv`, `.xml`, `.html`, `.css`
-- 最大文件大小：999MB
-- 会自动创建不存在的目录
-
-### file.writeTextSync(path, content, [append])
-同步写入文本到文件。
-
 **⚠️ 方法名修正**: 必须使用 `writeTextSync`（小写w）。`WriteTextSync`（大写W）已被弃用。
 
 ```javascript
@@ -554,12 +529,13 @@ file.writeTextSync("logs/debug.log", "新的日志信息\n", true);
 
 **返回值**: 布尔值，表示是否写入成功
 
-**代码位置**: `LimitedFile.cs:173-197`
+**代码位置**: `LimitedFile.cs:279-303`
 
 **安全限制**:
-- 支持的文件扩展名：`.txt`, `.json`, `.log`, `.csv`, `.xml`, `.html`, `.css`
+- 只能写入脚本项目目录内的文件
+- 支持的文件扩展名：`.txt`, `.json`, `.log`, `.csv`, `.xml`, `.html`, `.css`, `.png`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`, `.webp`
 - 最大文件大小：999MB
-- 会自动创建目录（如果不存在）
+- 会自动创建不存在的目录
 
 ### ✅ 新增：异步写入功能
 
@@ -1134,8 +1110,15 @@ try {
 
 ## 版本信息
 
-- **文档版本**: v1.0.0
-- **最后更新**: 2025年10月19日
+- **文档版本**: v1.1.0
+- **最后更新**: 2026年2月6日
 - **适用BGI版本**: >=0.52.0
 - **维护状态**: 活跃维护
+
+## 变更记录
+
+- v1.1.0 (2026-02-06):
+  - 🔧 **修复**: 删除重复的 `file.writeTextSync` 文档部分
+  - 📝 **更新**: 更正代码位置行号为 `LimitedFile.cs:279-303`
+  - 📝 **更新**: 补充完整的允许文件扩展名列表
 
