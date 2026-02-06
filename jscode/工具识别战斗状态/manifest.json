@@ -1,0 +1,13 @@
+{
+  "manifest_version": 1,
+  "name": "工具识别战斗状态",
+  "version": "1.0",
+  "description": "工具识别战斗状态。",
+  "authors": [
+    {
+      "name": "塔台"
+    }
+  ],
+  "settings_ui": "settings.json",
+  "main": "main.js"
+}

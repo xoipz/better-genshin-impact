@@ -1,0 +1,50 @@
+[
+    {
+        "name": "questName",
+        "type": "input-text",
+        "label": "任务名称\n录制的任务名称，用于生成文件名",
+        "default": "DemoTask"
+    },
+    {
+        "name": "questLocation",
+        "type": "input-text",
+        "label": "任务地点\n任务所在地点，用于组织文件夹",
+        "default": "Mondstadt"
+    },
+    {
+        "name": "author",
+        "type": "input-text",
+        "label": "作者",
+        "default": "User"
+    },
+    {
+        "name": "autoFight",
+        "type": "checkbox",
+        "label": "启用自动战斗\n触发战斗标记时是否直接执行战斗",
+        "default": true
+    },
+    {
+        "name": "keyRecord",
+        "type": "input-text",
+        "label": "录制/暂停热键\n默认: F7",
+        "default": "F7"
+    },
+    {
+        "name": "keySplit",
+        "type": "input-text",
+        "label": "路径分段热键\n默认: F8",
+        "default": "F8"
+    },
+    {
+        "name": "keyOcr",
+        "type": "input-text",
+        "label": "OCR锚点热键\n默认: F9",
+        "default": "F9"
+    },
+    {
+        "name": "keyFight",
+        "type": "input-text",
+        "label": "战斗标记热键\n默认: F10",
+        "default": "F10"
+    }
+]

@@ -1,0 +1,23 @@
+{
+    "manifest_version": 1,
+    "name": "状态雷达面板",
+    "version": "1.0",
+    "description": "显示当前位置雷达及状态日志",
+    "tags": [
+        "工具",
+        "UI"
+    ],
+    "authors": [
+        {
+            "name": "User",
+            "link": ""
+        }
+    ],
+    "permissions": [
+        "game-control",
+        "screen-capture",
+        "file-read",
+        "file-write"
+    ],
+    "main": "main.js"
+}

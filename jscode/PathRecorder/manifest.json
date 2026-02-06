@@ -1,0 +1,19 @@
+{
+    "manifest_version": 1,
+    "name": "路径录制工具",
+    "version": "1.0",
+    "bgi_version": "0.45.0",
+    "description": "集成了HTML HUD与键鼠控制的高级路径录制工具",
+    "tags": [
+        "工具",
+        "录制"
+    ],
+    "authors": [
+        {
+            "name": "User",
+            "link": ""
+        }
+    ],
+    "settings_ui": "settings.json",
+    "main": "main.js"
+}

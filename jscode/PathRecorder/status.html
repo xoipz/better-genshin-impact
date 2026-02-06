@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 移除 CDN 依赖，使用内联样式避免网络问题导致加载卡死 -->
+    <style>
+        /* 使用系统字体，避免网络加载 */
+        :root {
+            --genshin-gold: #ece5d8;
+            --genshin-active: #ffc107;
+            --genshin-text: #3b4354;
+            --genshin-bg: rgba(236, 229, 216, 0.95);
+            --genshin-dark: #3b4354;
+        }
+
+        /* 重置和基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* 铺满全屏，无边距 */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: transparent;
+            /* 悬浮窗通常背景透明 */
+            font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+            user-select: none;
+            color: var(--genshin-text);
+        }
+
+        /* Tailwind 替代工具类 */
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .flex-1 { flex: 1 1 0%; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .justify-center { justify-content: center; }
+        .gap-1 { gap: 0.25rem; }
+        .gap-3 { gap: 0.75rem; }
+        .h-full { height: 100%; }
+        .w-full { width: 100%; }
+        .min-w-0 { min-width: 0; }
+        .shrink-0 { flex-shrink: 0; }
+        .overflow-hidden { overflow: hidden; }
+        .overflow-y-auto { overflow-y: auto; }
+        .hidden { display: none; }
+        .inline-block { display: inline-block; }
+        .text-center { text-align: center; }
+        .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .font-bold { font-weight: 700; }
+        .font-medium { font-weight: 500; }
+        .italic { font-style: italic; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cursor-pointer { cursor: pointer; }
+        .rounded { border-radius: 0.25rem; }
+        .rounded-full { border-radius: 9999px; }
+        .border-t { border-top-width: 1px; border-top-style: solid; }
+        .border-b { border-bottom-width: 1px; border-bottom-style: solid; }
+        .border-gray-200 { border-color: #e5e7eb; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .bg-gray-200 { background-color: #e5e7eb; }
+        .bg-gray-500 { background-color: #6b7280; }
+        .bg-red-500 { background-color: #ef4444; }
+        .bg-white { background-color: white; }
+        .text-white { color: white; }
+        .text-gray-400 { color: #9ca3af; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .uppercase { text-transform: uppercase; }
+        .tracking-widest { letter-spacing: 0.1em; }
+        .mt-1 { margin-top: 0.25rem; }
+        .mt-2 { margin-top: 0.5rem; }
+        .mt-3 { margin-top: 0.75rem; }
+        .mb-1 { margin-bottom: 0.25rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mr-2 { margin-right: 0.5rem; }
+        .pr-2 { padding-right: 0.5rem; }
+        .pt-3 { padding-top: 0.75rem; }
+        .pb-1 { padding-bottom: 0.25rem; }
+        .pb-2 { padding-bottom: 0.5rem; }
+        .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+        .py-0\.5, .py-0-5 { padding-top: 0.125rem; padding-bottom: 0.125rem; }
+        .px-1\.5, .px-1-5 { padding-left: 0.375rem; padding-right: 0.375rem; }
+        .p-1\.5, .p-1-5 { padding: 0.375rem; }
+        .leading-none { line-height: 1; }
+        .hover\:bg-gray-300:hover { background-color: #d1d5db; }
+        .hover\:text-blue-500:hover { color: #3b82f6; }
+
+        /* 自定义尺寸类 */
+        .text-8px { font-size: 8px; }
+        .text-9px { font-size: 9px; }
+        .text-10px { font-size: 10px; }
+        .text-11px { font-size: 11px; }
+        .text-12px { font-size: 12px; }
+        .text-14px { font-size: 14px; }
+        .h-85px { height: 85px; }
+        .bg-white-40 { background-color: rgba(255, 255, 255, 0.4); }
+
+        /* 主容器响应式布局 */
+        .hud-container {
+            display: grid;
+            /* 使用 fr 单位实现比例缩放，minmax 确保不至于挤压变形 */
+            grid-template-columns: minmax(200px, 1fr) minmax(180px, 0.8fr) minmax(250px, 1.5fr);
+            gap: 15px;
+            background: var(--genshin-bg);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1.5px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+
+            /* 关键：铺满父级容器 */
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .hud-card {
+            background: rgba(255, 255, 255, 0.4);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* 防止溢出 */
+        }
+
+        /* 圆圈尺寸固定或随容器微调 */
+        .circle-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 0;
+        }
+
+        .circle-status {
+            aspect-ratio: 1 / 1;
+            width: 85%;
+            /* 随左侧宽度缩放 */
+            max-width: 220px;
+            border-radius: 50%;
+            border: 3px solid var(--genshin-dark);
+            position: relative;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.8) 0%, rgba(200, 200, 200, 0.1) 100%);
+        }
+
+        .recording-pulse {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #ff4d4d;
+            border-radius: 50%;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: translateX(-50%) scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: translateX(-50%) scale(1.5);
+                opacity: 0.5;
+            }
+
+            100% {
+                transform: translateX(-50%) scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* 列表区域自适应高度 */
+        .step-list {
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            margin-top: 5px;
+        }
+
+        .key-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.6);
+            margin-bottom: 6px;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+
+        .key-item.active {
+            border-left: 4px solid var(--genshin-active);
+            background: white;
+        }
+
+        .key-cap {
+            background: var(--genshin-dark);
+            color: var(--genshin-gold);
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .step-item {
+            font-size: 12px;
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #taskNameInput {
+            background: transparent;
+            border: none;
+            border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            width: 100%;
+            outline: none;
+        }
+
+        #taskNameInput:focus {
+            border-bottom-color: var(--genshin-active);
+        }
+
+        .diamond {
+            width: 7px;
+            height: 7px;
+            background: #bdc3c7;
+            transform: rotate(45deg);
+        }
+
+        .diamond.active {
+            background: var(--genshin-active);
+            box-shadow: 0 0 5px var(--genshin-active);
+        }
+
+        ::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="hud-container">
+
+        <!-- 左侧：图形与坐标 -->
+        <div class="flex flex-col h-full">
+            <div class="circle-container">
+                <div class="circle-status" id="canvasArea">
+                    <div id="recordDot" class="recording-pulse hidden"></div>
+                </div>
+            </div>
+
+            <div class="text-center mt-2 pb-2">
+                <div class="text-10px text-gray-400 uppercase tracking-widest">Coordinates</div>
+                <div id="currentCoords" class="text-lg font-bold">124.5, -67.2</div>
+                <div id="recordStatus"
+                    class="inline-block text-9px font-bold px-2 py-0-5 bg-gray-200 rounded-full mt-1">IDLE</div>
+
+                <div class="border-t border-gray-200 pt-3 mt-3">
+                    <div class="text-9px text-gray-400 uppercase mb-1">Task Name</div>
+                    <input type="text" id="taskNameInput" value="世界任务：影向祓行_R1">
+                </div>
+            </div>
+        </div>
+
+        <!-- 中间：按键控制 -->
+        <div class="hud-card">
+            <div class="text-11px font-bold mb-3 border-b pb-1 border-gray-300">功能控制 [KEYS]</div>
+            <div id="keyBindings" class="flex-1 overflow-y-auto">
+                <!-- 由 JS 渲染 -->
+            </div>
+        </div>
+
+        <!-- 右侧：日志与 OCR -->
+        <div class="flex flex-col gap-3 h-full overflow-hidden">
+            <!-- 步骤日志 - flex-1 占据剩余空间 -->
+            <div class="hud-card flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-11px font-bold">日志 (Log)</span>
+                    <button onclick="undo()"
+                        class="text-9px bg-gray-200 px-1-5 py-0-5 rounded hover:bg-gray-300">撤销</button>
+                </div>
+                <div id="stepList" class="step-list">
+                    <!-- 步骤项 -->
+                </div>
+            </div>
+
+            <!-- OCR 内容 - 固定较小高度 -->
+            <div class="hud-card h-85px shrink-0">
+                <div class="text-9px font-bold text-gray-500 mb-1">OCR CONTENT</div>
+                <div id="ocrContent" class="text-xs bg-white-40 p-1-5 rounded italic text-gray-600 overflow-y-auto">
+                    等待识别...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let state = {
+            isRecording: false,
+            taskName: "Task-Name",
+            currentCoords: { x: 0, y: 0 },
+            keys: [
+                { key: 'F6', label: '录制/暂停', active: false },
+                { key: 'F7', label: '路径分段', active: false },
+                { key: 'F8', label: 'OCR锚点', active: false },
+                { key: 'F9', label: '战斗标记', active: false }
+            ],
+            steps: []
+        };
+
+        // 通信变量
+        window.clientAction = null;
+
+        // 外部更新入口
+        function updateState(newState) {
+            // 合并状态
+            state = { ...state, ...newState };
+            render();
+        }
+
+        function render() {
+            document.getElementById('currentCoords').innerText = `${state.currentCoords.x.toFixed(1)}, ${state.currentCoords.y.toFixed(1)}`;
+
+            const taskInput = document.getElementById('taskNameInput');
+            if (document.activeElement !== taskInput) taskInput.value = state.taskName;
+
+            const statusEl = document.getElementById('recordStatus');
+            const dotEl = document.getElementById('recordDot');
+            if (state.isRecording) {
+                statusEl.innerText = "RECORDING";
+                statusEl.className = "inline-block text-9px font-bold px-2 py-0-5 bg-red-500 text-white rounded-full mt-1";
+                dotEl.classList.remove('hidden');
+            } else {
+                statusEl.innerText = "PAUSED";
+                statusEl.className = "inline-block text-9px font-bold px-2 py-0-5 bg-gray-500 text-white rounded-full mt-1";
+                dotEl.classList.add('hidden');
+            }
+
+            document.getElementById('keyBindings').innerHTML = state.keys.map(k => `
+            <div class="key-item ${k.active ? 'active' : ''}">
+                <div class="flex items-center">
+                    <span class="key-cap">${k.key}</span>
+                    <span class="text-11px font-medium">${k.label}</span>
+                </div>
+                <div class="diamond ${k.active ? 'active' : ''}"></div>
+            </div>
+        `).join('');
+
+            // 列表区域优化：仅当 steps 引用变化时重绘
+            if (state.steps !== render.lastStepsRef) {
+                render.lastStepsRef = state.steps;
+                const listContainer = document.getElementById('stepList');
+                listContainer.innerHTML = state.steps.slice().reverse().map(s => `
+                <div class="step-item">
+                    <div class="flex-1 min-w-0 pr-2">
+                        <div class="font-bold text-gray-800 truncate cursor-pointer hover:text-blue-500" onclick="renameStep(${s.id}, '${s.name}')">
+                            ${getIcon(s.type)} ${s.name}
+                        </div>
+                        <div class="text-8px text-gray-500">
+                            ${formatCoords(s.start)} -> ${formatCoords(s.end)}
+                        </div>
+                    </div>
+                <div class="flex shrink-0 gap-1">
+                    <div class="cursor-pointer text-14px leading-none" onclick="deleteStep(${s.id})">x</div>
+                </div>
+            </div>
+            `).join('');
+            }
+        }
+        // 初始化静态属性
+        render.lastStepsRef = null;
+
+        function getIcon(type) {
+            if (type === 'move' || type === 'path') return '🏃';
+            if (type === 'fight') return '⚔️';
+            if (type === 'ocr' || type === 'dialogue') return '💬';
+            return '📄';
+        }
+
+        function formatCoords(coords) {
+            if (!coords) return '0,0';
+            if (Array.isArray(coords)) return `${coords[0]},${coords[1]}`;
+            return `${coords.x},${coords.y}`;
+        }
+
+        document.getElementById('taskNameInput').addEventListener('change', (e) => {
+            window.clientAction = { type: 'update_task_name', name: e.target.value };
+        });
+
+        // 按钮/交互逻辑 -> 发送 Action
+        function deleteStep(id) {
+            window.clientAction = { type: 'delete_step', id: id };
+        }
+
+        function renameStep(id, oldName) {
+            // 这里为了体验更好，可以先prompt，确定后再发action
+            // BGI环境下的 prompt 会阻塞 Webview 渲染吗？通常会。
+            // 简单处理：使用 HTML 内部 prompt
+            const name = prompt("Modify Step Name:", oldName);
+            if (name && name !== oldName) {
+                window.clientAction = { type: 'rename_step', id: id, newName: name };
+            }
+        }
+
+        function undo() {
+            window.clientAction = { type: 'undo' };
+        }
+
+        // 键盘事件监听 (主要是辅助，核心还是靠 main.js 的全局钩子)
+        // 但为了防止在 Webview 聚焦时按键失效，这里也可以转发
+        window.addEventListener('keydown', (e) => {
+            // if (document.activeElement.tagName === 'INPUT') return;
+            // HTML 内部按键不直接处理逻辑，全部交给 main.js
+            // 或者：如果 main.js 的 KeyMouseHook 是全局的，这里就不需要重复处理
+            // 通常 KeyMouseHook 是系统级全局钩子，所以无需这里处理
+        });
+
+        render();
+    </script>
+</body>
+
+</html>

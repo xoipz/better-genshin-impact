@@ -1,0 +1,60 @@
+[
+    {
+        "name": "AutoPickEnabled",
+        "type": "checkbox",
+        "label": "启用自动拾取功能",
+        "default": true
+    },
+    {
+        "name": "AutoPickTextList",
+        "type": "input-text",
+        "label": "自动拾取关键词（用逗号分隔）",
+        "default": "拾取,采集,收集"
+    },
+    {
+        "name": "ForceInteraction",
+        "type": "checkbox",
+        "label": "强制交互（无视文本直接按F）",
+        "default": false
+    },
+    {
+        "name": "AutoSkipEnabled",
+        "type": "checkbox",
+        "label": "启用自动剧情跳过功能",
+        "default": true
+    },
+    {
+        "name": "BattleDetectionSection",
+        "type": "input-text",
+        "label": "====================\n战斗检测设置"
+    },
+    {
+        "name": "IgnoreClimbState",
+        "type": "checkbox",
+        "label": "攀爬时禁用战斗检测",
+        "default": true
+    },
+    {
+        "name": "IgnoreSwimState",
+        "type": "checkbox",
+        "label": "游泳时禁用战斗检测",
+        "default": true
+    },
+    {
+        "name": "IgnoreFlyState",
+        "type": "checkbox",
+        "label": "飞行时禁用战斗检测",
+        "default": true
+    },
+    {
+        "name": "IgnoreInteractionState",
+        "type": "checkbox",
+        "label": "交互提示时禁用战斗检测",
+        "default": true
+    },
+    {
+        "name": "WASDMove",
+        "type": "input-text",
+        "label": "====================\n移动策略"
+    }
+]
