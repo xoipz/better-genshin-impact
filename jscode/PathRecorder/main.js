@@ -34,8 +34,9 @@ const autoFight = settings.autoFight !== false; // 默认启用自动战斗
 // 快捷键配置
 const keyRecord = settings.keyRecord || "F7";      // 开始/结束录制
 const keyOcr = settings.keyOcr || "D9";            // OCR对话
-const keyFight = settings.keyFight || "F10";       // 战斗标记
+const keyFight = settings.keyFight || "F8";        // 战斗标记
 const keyExport = settings.keyExport || "F9";      // 导出/结束录制
+const keyTeleportStart = settings.keyTeleportStart || "D8"; // 以传送点开始录制
 
 // 游戏菜单映射 (用于检测特定界面) - 延迟获取避免加载顺序问题
 function getMenuStateMap() {
@@ -54,9 +55,11 @@ function getMenuStateMap() {
 // 快捷键配置显示
 const keysConfig = [
     { key: keyRecord, label: '开始/结束', active: false },
+    { key: keyTeleportStart, label: '传送点开始', active: false, visible: true },
     { key: keyOcr, label: 'OCR对话', active: false },
     { key: keyFight, label: '战斗标记', active: false },
-    { key: keyExport, label: '导出', active: false }
+    { key: keyExport, label: '导出', active: false },
+    { key: '0', label: '缩小', active: false }
 ];
 
 // 全局状态
@@ -201,10 +204,11 @@ async function init() {
     // 4. 显示快捷键说明
     log.info("=== 快捷键说明 ===");
     log.info(`${keyRecord}: 开始/结束录制`);
+    log.info(`${keyTeleportStart}: 以传送点开始录制`);
     log.info(`${keyOcr}: OCR对话标记`);
     log.info(`${keyFight}: 战斗标记`);
     log.info(`${keyExport}: 导出`);
-    log.info("F12: 显示/隐藏HUD");
+    log.info("0: 缩小/恢复HUD");
     log.info("====================");
 
     // 5. 启动主循环
@@ -219,6 +223,9 @@ function registerHotkeys() {
             case keyRecord:
                 toggleRecording();
                 break;
+            case keyTeleportStart:
+                handleTeleportStart();
+                break;
             case keyOcr:
                 handleDialogue();
                 break;
@@ -228,7 +235,7 @@ function registerHotkeys() {
             case keyExport:
                 handleEndRecording();
                 break;
-            case 'F12':
+            case 'D0':
                 toggleHUD();
                 break;
         }
@@ -237,6 +244,10 @@ function registerHotkeys() {
 
 function updateKeysStatus() {
     keysConfig[0].active = isRecording;
+    // 传送点开始按键：录制中隐藏且禁用
+    keysConfig[1].visible = !isRecording;
+    // 缩小按键：缩小状态下隐藏（由minimized-actions中的恢复窗口替代）
+    keysConfig[5].visible = !isMinimized;
 }
 
 // 切换录制状态 (开始/结束)
@@ -302,6 +313,97 @@ async function handleResume() {
     updateHUD();
 
     log.info(`录制已开始，文件段: ${currentStepIndex}`);
+}
+
+// 以传送点开始录制（一次性功能：打开大地图获取精确坐标后开始录制）
+async function handleTeleportStart() {
+    if (isProcessingAction || isRecording) return;
+    isProcessingAction = true;
+    try {
+        log.info("以传送点开始录制...");
+
+        // 确保在主界面
+        if (!isInMainUI()) {
+            await genshin.returnMainUi();
+            await sleep(300);
+        }
+
+        if (!isInMainUI()) {
+            log.warn("不在主界面，无法开始录制");
+            return;
+        }
+
+        // 打开大地图获取精确坐标
+        keyPress("M");
+        await sleep(500);
+
+        let bigMapPosition = null;
+        let retryCount = 0;
+
+        while (retryCount < 3 && !bigMapPosition) {
+            try {
+                bigMapPosition = genshin.getPositionFromBigMap();
+                if (bigMapPosition && bigMapPosition.X !== 0 && bigMapPosition.Y !== 0) {
+                    log.info(`大地图精确坐标: (${bigMapPosition.X.toFixed(3)}, ${bigMapPosition.Y.toFixed(3)})`);
+                    break;
+                } else {
+                    throw new Error("获取到无效坐标");
+                }
+            } catch (error) {
+                retryCount++;
+                if (retryCount < 3) await sleep(200);
+            }
+        }
+
+        // 返回主界面
+        await genshin.returnMainUi();
+        await sleep(200);
+
+        // 确定使用的坐标
+        let startX, startY;
+        if (bigMapPosition && bigMapPosition.X !== 0 && bigMapPosition.Y !== 0) {
+            startX = bigMapPosition.X;
+            startY = bigMapPosition.Y;
+        } else {
+            // 大地图获取失败，回退到小地图
+            log.warn("大地图坐标获取失败，使用小地图坐标");
+            const fallback = genshin.getPositionFromMap();
+            if (fallback.X === 0 && fallback.Y === 0) {
+                log.warn("无法获取当前位置");
+                return;
+            }
+            startX = fallback.X;
+            startY = fallback.Y;
+        }
+
+        // 检测初始状态
+        const initialState = await checkAbnormalState();
+
+        // 添加传送点作为起始点
+        const startPoint = {
+            id: currentTrackData.positions.length + 1,
+            x: startX,
+            y: startY,
+            action: "",
+            move_mode: "walk",
+            action_params: "",
+            type: "teleport",
+            optimize: false,
+            state: initialState,
+            timestamp: Date.now()
+        };
+
+        currentTrackData.positions.push(startPoint);
+        lastPosition = { x: startX, y: startY };
+
+        isRecording = true;
+        lastEndType = null;
+
+        updateHUD();
+        log.info(`以传送点开始录制: 坐标=(${startX.toFixed(1)}, ${startY.toFixed(1)})，文件段: ${currentStepIndex}`);
+    } finally {
+        isProcessingAction = false;
+    }
 }
 
 // 开始新的录制段
@@ -647,15 +749,15 @@ function addStepToList(type, name, data, startPos = null, endPos = null) {
     stepsDirty = true;
 }
 
-// 显隐HUD
-let hudVisible = true;
+// 缩小/恢复HUD
+let isMinimized = false;
 function toggleHUD() {
-    hudVisible = !hudVisible;
-    if (hudVisible) {
-        htmlPanel.show(HUD_ID);
-    } else {
-        htmlPanel.hide(HUD_ID);
+    isMinimized = !isMinimized;
+    if (!isMinimized) {
+        // 恢复完整模式时解除锁定，确保可交互
+        htmlPanel.setLocked(HUD_ID, false);
     }
+    updateHUD();
 }
 
 // 保存当前路径到缓存文件
@@ -976,44 +1078,16 @@ async function recordPosition() {
             log.info(`刚从地图返回，检测首个点，距离: ${dist.toFixed(2)}`);
 
             if (dist > TELEPORT_THRESHOLD) {
-                log.info("检测为传送点，获取精确坐标...");
-
-                // 按M键打开大地图
-                keyPress("M");
-                await sleep(500);
-
-                let bigMapPosition = null;
-                let retryCount = 0;
-
-                while (retryCount < 3 && !bigMapPosition) {
-                    try {
-                        bigMapPosition = genshin.getPositionFromBigMap();
-                        if (bigMapPosition && bigMapPosition.X !== 0 && bigMapPosition.Y !== 0) {
-                            log.info(`大地图精确坐标: (${bigMapPosition.X.toFixed(3)}, ${bigMapPosition.Y.toFixed(3)})`);
-                            position.X = bigMapPosition.X;
-                            position.Y = bigMapPosition.Y;
-                            break;
-                        } else {
-                            throw new Error("获取到无效坐标");
-                        }
-                    } catch (error) {
-                        retryCount++;
-                        if (retryCount < 3) await sleep(200);
-                    }
-                }
-
-                await genshin.returnMainUi();
-                await sleep(100);
-
-                pointType = "teleport";
-                optimizeFlag = false;
+                await autoSplitTeleport(position);
+                justExitedMap = false;
+                return;
             }
 
             justExitedMap = false;
         } else if (dist > ANOMALY_THRESHOLD && lastPosition) {
             // 异常距离检测（非地图退出情况）
             log.warn(`异常距离: ${dist.toFixed(2)} > ${ANOMALY_THRESHOLD}，可能是传送`);
-            await checkTeleport();
+            await autoSplitTeleport(position);
             return;
         }
 
@@ -1049,73 +1123,77 @@ async function recordPosition() {
     }
 }
 
-// 智能传送检测
-async function checkTeleport() {
-    if (!lastPosition) return;
+// 自动分段传送：保存当前路径，获取精确坐标，以传送点为起点开始新段
+async function autoSplitTeleport(fallbackPos) {
+    log.info("检测到传送，自动分段并以传送点开始新段...");
 
-    const pos = genshin.getPositionFromMap();
-    const dist = distance({ x: pos.X, y: pos.Y }, lastPosition);
-
-    if (dist > TELEPORT_THRESHOLD) {
-        log.warn(`传送检测: 距离跳变 ${dist.toFixed(1)}m`);
-
-        // 保存当前路径
-        if (currentTrackData.positions.length > 0) {
-            const result = await saveCurrentPath();
-            if (result) {
-                addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
-                saveCacheMeta();
-            }
+    // 保存当前路径作为一个步骤
+    if (currentTrackData.positions.length > 0) {
+        const result = await saveCurrentPath();
+        if (result) {
+            addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
+            saveCacheMeta();
         }
-
-        // 获取精确坐标
-        keyPress("M");
-        await sleep(600);
-
-        let bigMapPosition = null;
-        let retryCount = 0;
-
-        while (retryCount < 3 && !bigMapPosition) {
-            try {
-                bigMapPosition = genshin.getPositionFromBigMap();
-                if (bigMapPosition && bigMapPosition.X !== 0 && bigMapPosition.Y !== 0) {
-                    break;
-                }
-                throw new Error("无效坐标");
-            } catch (error) {
-                retryCount++;
-                if (retryCount < 3) await sleep(300);
-            }
-        }
-
-        await genshin.returnMainUi();
-        await sleep(200);
-
-        // 添加传送点
-        if (bigMapPosition && bigMapPosition.X !== 0) {
-            lastPosition = { x: bigMapPosition.X, y: bigMapPosition.Y };
-
-            const teleportPoint = {
-                id: currentTrackData.positions.length + 1,
-                x: bigMapPosition.X,
-                y: bigMapPosition.Y,
-                action: "",
-                move_mode: "walk",
-                action_params: "",
-                type: "teleport",
-                optimize: false,
-                state: MOVE_STATE.NORMAL,
-                timestamp: Date.now()
-            };
-            currentTrackData.positions.push(teleportPoint);
-            log.info(`添加传送点: (${bigMapPosition.X.toFixed(1)}, ${bigMapPosition.Y.toFixed(1)})`);
-        } else {
-            lastPosition = { x: pos.X, y: pos.Y };
-        }
-
-        notification.send("检测到传送，已自动分段保存");
-        updateHUD();
     }
+
+    // 打开大地图获取精确坐标
+    keyPress("M");
+    await sleep(500);
+
+    let bigMapPosition = null;
+    let retryCount = 0;
+
+    while (retryCount < 3 && !bigMapPosition) {
+        try {
+            bigMapPosition = genshin.getPositionFromBigMap();
+            if (bigMapPosition && bigMapPosition.X !== 0 && bigMapPosition.Y !== 0) {
+                log.info(`大地图精确坐标: (${bigMapPosition.X.toFixed(3)}, ${bigMapPosition.Y.toFixed(3)})`);
+                break;
+            } else {
+                throw new Error("获取到无效坐标");
+            }
+        } catch (error) {
+            retryCount++;
+            if (retryCount < 3) await sleep(200);
+        }
+    }
+
+    await genshin.returnMainUi();
+    await sleep(200);
+
+    // 确定使用的坐标
+    let tpX, tpY;
+    if (bigMapPosition && bigMapPosition.X !== 0 && bigMapPosition.Y !== 0) {
+        tpX = bigMapPosition.X;
+        tpY = bigMapPosition.Y;
+    } else if (fallbackPos) {
+        tpX = fallbackPos.X || fallbackPos.x;
+        tpY = fallbackPos.Y || fallbackPos.y;
+    } else {
+        const pos = genshin.getPositionFromMap();
+        tpX = pos.X;
+        tpY = pos.Y;
+    }
+
+    // 以传送点为起点开始新段
+    const tpState = await checkAbnormalState();
+    currentTrackData.positions.push({
+        id: currentTrackData.positions.length + 1,
+        x: tpX,
+        y: tpY,
+        action: "",
+        move_mode: "walk",
+        action_params: "",
+        type: "teleport",
+        optimize: false,
+        state: tpState,
+        timestamp: Date.now()
+    });
+    lastPosition = { x: tpX, y: tpY };
+
+    notification.send("检测到传送，已自动分段");
+    log.info(`传送点自动分段: (${tpX.toFixed(1)}, ${tpY.toFixed(1)})`);
+    updateHUD();
 }
 
 // 处理客户端指令
@@ -1165,8 +1243,15 @@ async function handleClientActions() {
                         updateHUD();
                     }
                     break;
-                case 'hide_ui':
-                    toggleHUD();
+                case 'toggle_minimize':
+                    isMinimized = !isMinimized;
+                    if (!isMinimized) {
+                        htmlPanel.setLocked(HUD_ID, false);
+                    }
+                    updateHUD();
+                    break;
+                case 'export':
+                    handleEndRecording();
                     break;
             }
         }
@@ -1206,9 +1291,10 @@ async function updateHUD() {
             lastEndType: lastEndType,
             taskName: questName,
             currentCoords: { x: displayPos.x, y: displayPos.y },
-            keys: keysConfig,
+            keys: keysConfig.filter(k => k.visible !== false),
             cycleCount: cycleCount,
-            pathPoints: pathPoints
+            pathPoints: pathPoints,
+            isMinimized: isMinimized
         };
 
         if (steps.length !== lastSentStepCount || stepsDirty) {
