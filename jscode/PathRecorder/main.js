@@ -1037,7 +1037,9 @@ async function mainLoop() {
             // 1. 处理 HTML 指令
             await handleClientActions();
 
-            // 2. 检测界面状态 (使用轻量级检测，仅检测 Story 和 MAP)
+            // 2. 单次截屏，用于本周期所有检测（5次截屏→1次）
+            beginDetectionCycle();
+
             let elementState = ELEMENT_STATE.MAINUI;
             try {
                 elementState = await checkElementStateLight();
@@ -1054,7 +1056,20 @@ async function mainLoop() {
                 log.info("检测到离开地图界面，设置传送检测标志");
             }
 
-            // 3. 剧情界面处理
+            // 3. 录制逻辑（复用同一张截图检测移动状态，避免重复截屏）
+            // 用 elementState 判断主界面，不再重复调用 isInMainUI()
+            if (isRecording && !isPaused && !isProcessingAction && elementState === ELEMENT_STATE.MAINUI) {
+                try {
+                    await recordPosition();
+                } catch (recErr) {
+                    // 录制出错时继续循环
+                }
+            }
+
+            // 结束本周期检测缓存
+            endDetectionCycle();
+
+            // 4. 剧情界面处理（在缓存周期之外，waitForMainUI 每次检查需要实时截图）
             if (elementState === ELEMENT_STATE.Story) {
                 if (isRecording) {
                     log.info("录制中检测到剧情界面");
@@ -1065,23 +1080,13 @@ async function mainLoop() {
                 }
             }
 
-            // 4. 录制逻辑（操作锁激活时跳过，避免与快捷键处理竞态）
-            if (isRecording && !isPaused && !isProcessingAction) {
-                try {
-                    if (isInMainUI()) {
-                        await recordPosition();
-                    }
-                } catch (recErr) {
-                    // 录制出错时继续循环
-                }
-            }
-
             // 5. 更新HUD
             if (Date.now() - lastUpdateHUD > 500) {
                 await updateHUD();
                 lastUpdateHUD = Date.now();
             }
         } catch (e) {
+            endDetectionCycle();
             log.error("MainLoop Error: " + e.message);
         }
 

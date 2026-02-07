@@ -40,6 +40,27 @@ function getLazyRo(name, loader) {
   return _roCache[name];
 }
 
+// ============================================
+// 每周期截图缓存
+// 主循环每周期只截屏一次，所有检测复用同一张截图
+// ============================================
+var _cycleCapture = null;
+
+// 截取屏幕并缓存，在主循环每周期开头调用
+function beginDetectionCycle() {
+  _cycleCapture = captureGameRegion();
+}
+
+// 清除缓存，在主循环每周期结束时调用
+function endDetectionCycle() {
+  _cycleCapture = null;
+}
+
+// 获取截图：有缓存用缓存，无缓存即时截取（供非主循环路径使用）
+function getCapture() {
+  return _cycleCapture || captureGameRegion();
+}
+
 // 识别对象定义（懒加载）
 function getPaimonMenuRo() {
   return getLazyRo('paimonMenu', () => RecognitionObject.TemplateMatch(
@@ -145,7 +166,7 @@ function getStoryRo() {
 
 // 判断是否在主界面的函数
 function isInMainUI() {
-  let captureRegion = captureGameRegion();
+  let captureRegion = getCapture();
   let paimonres = captureRegion.Find(getPaimonMenuRo());
   return !paimonres.isEmpty();
 }
@@ -153,7 +174,7 @@ function isInMainUI() {
 // 识别图像函数
 async function recognizeImage(recognitionObject) {
   try {
-    let imageResult = captureGameRegion().find(recognitionObject);
+    let imageResult = getCapture().find(recognitionObject);
     if (imageResult && imageResult.x !== 0 && imageResult.y !== 0 && imageResult.width !== 0 && imageResult.height !== 0) {
       return { success: true, x: imageResult.x, y: imageResult.y };
     }
