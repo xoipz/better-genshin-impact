@@ -15,6 +15,9 @@ const MOVE_MODES = {
     JUMP: "jump"
 };
 
+const CACHE_FOLDER = "process/_cache";
+const CACHE_META = `${CACHE_FOLDER}/meta.json`;
+
 const HUD_WIDTH = 800;
 const HUD_HEIGHT = 400;
 const TELEPORT_THRESHOLD = 20; // 传送检测阈值
@@ -29,10 +32,8 @@ const author = settings.author || "User";
 const autoFight = settings.autoFight !== false; // 默认启用自动战斗
 
 // 快捷键配置
-const keyRecord = settings.keyRecord || "F7";      // 开始/暂停录制
-const keyRecordTp = settings.keyRecordTp || "F4";  // 开始录制(起点为传送点)
-const keySplit = settings.keySplit || "F8";        // 路径分段
-const keyOcr = settings.keyOcr || "F5";            // OCR对话
+const keyRecord = settings.keyRecord || "F7";      // 开始/结束录制
+const keyOcr = settings.keyOcr || "D9";            // OCR对话
 const keyFight = settings.keyFight || "F10";       // 战斗标记
 const keyExport = settings.keyExport || "F9";      // 导出/结束录制
 
@@ -52,20 +53,16 @@ function getMenuStateMap() {
 
 // 快捷键配置显示
 const keysConfig = [
-    { key: keyRecord, label: '录制/暂停', active: false },
-    { key: keyRecordTp, label: '录制(传送起点)', active: false },
-    { key: keySplit, label: '路径分段', active: false },
+    { key: keyRecord, label: '开始/结束', active: false },
     { key: keyOcr, label: 'OCR对话', active: false },
     { key: keyFight, label: '战斗标记', active: false },
-    { key: keyExport, label: '导出结束', active: false }
+    { key: keyExport, label: '导出', active: false }
 ];
 
 // 全局状态
 let isRecording = false;
-let isPaused = false;
 let isProcessingAction = false; // 操作互斥锁，防止快捷键回调与主循环竞态
-let lastEndType = null; // 上次录制结束类型: 'fight', 'dialogue', 'pause', 'save', 'story'
-let startWithTp = false; // 起点是否为传送点
+let lastEndType = null; // 上次录制结束类型: 'fight', 'dialogue', 'save', 'story'
 let justExitedMap = false; // 是否刚从地图界面退出
 let wasInMap = false; // 是否曾进入地图界面
 let cycleCount = 0; // 循环计数器
@@ -92,166 +89,57 @@ let lastSentHudData = "";
 let lastSentStepCount = -1;
 let stepsDirty = false;
 
-// process.json 数据
+// process.json 数据（仅在导出时使用）
 let processData = [];
 
-// 从processData中寻找地图追踪文件的最大数字
-function findMaxTrackNumber(data) {
-    let maxNumber = null;
-    const trackPattern = /地图追踪\s+([^-]+-)?(\d+)\.json/;
+// === 缓存管理函数 ===
 
-    for (const line of data) {
-        const match = line.match(trackPattern);
-        if (match && match[2]) {
-            const currentNumber = parseInt(match[2]);
-            if (maxNumber === null || currentNumber > maxNumber) {
-                maxNumber = currentNumber;
-            }
-        }
-    }
-    return maxNumber;
+function saveCacheMeta() {
+    const meta = {
+        questName, questLocation, author,
+        currentStepIndex, lastEndType,
+        steps: steps
+    };
+    file.writeTextSync(CACHE_META, JSON.stringify(meta, null, 2));
 }
 
-// 分析process.json中的上次录制结束类型
-function analyzeLastEndType(data) {
-    if (!data || data.length === 0) {
-        return null;
-    }
-
-    // 从最后一行开始向前查找
-    for (let i = data.length - 1; i >= 0; i--) {
-        const line = data[i].trim();
-
-        // 跳过空行和作者信息
-        if (!line || line.startsWith('作者：')) {
-            continue;
-        }
-
-        // 分析不同的结束类型
-        if (line === '战斗') {
-            log.info("分析process.json: 上次录制以战斗结束");
-            return 'fight';
-        } else if (line.startsWith('对话')) {
-            log.info("分析process.json: 上次录制以对话结束");
-            return 'dialogue';
-        } else if (line === '暂停') {
-            log.info("分析process.json: 上次录制以暂停结束");
-            return 'pause';
-        } else if (line === '等待返回主界面') {
-            log.info("分析process.json: 上次录制以剧情结束");
-            return 'story';
-        } else if (line.startsWith('地图追踪')) {
-            log.info("分析process.json: 上次录制以保存结束");
-            return 'save';
-        }
-    }
-
-    log.info("分析process.json: 未找到明确的结束类型");
+function loadCacheMeta() {
+    try {
+        const content = file.readTextSync(CACHE_META);
+        if (content && content.trim()) return JSON.parse(content);
+    } catch (e) {}
     return null;
 }
 
-// 初始化process.json数据（支持继续录制）
-async function initProcessData() {
-    const processPath = `process/${questLocation}/${questName}/process.json`;
-
-    try {
-        const existingContent = file.readTextSync(processPath);
-
-        if (existingContent && existingContent.trim() !== '') {
-            processData = existingContent.split('\n').filter(line => line.trim() !== '');
-            log.info(`已读取现有process.json，共${processData.length}行`);
-
-            // 确保第一行是作者信息
-            const hasAuthor = processData.length > 0 && processData[0].startsWith('作者：');
-            if (!hasAuthor) {
-                processData.unshift(`作者：${author}`);
-            }
-
-            // 寻找地图追踪文件中最大的数字
-            const maxTrackNumber = findMaxTrackNumber(processData);
-            if (maxTrackNumber !== null) {
-                currentStepIndex = maxTrackNumber + 1;
-                log.info(`找到最大追踪文件数字: ${maxTrackNumber}，下一个文件段为: ${currentStepIndex}`);
-            } else {
-                log.info("未找到地图追踪文件，从第1段开始");
-                currentStepIndex = 1;
-            }
-
-            // 分析上次录制结束类型
-            lastEndType = analyzeLastEndType(processData);
-
-            // 从processData恢复steps列表到HUD
-            restoreStepsFromProcessData();
-        } else {
-            processData = [`作者：${author}`];
-            currentStepIndex = 1;
-            lastEndType = null;
-            log.info("创建新的process.json，从第1段开始录制");
-        }
-    } catch (error) {
-        processData = [`作者：${author}`];
-        currentStepIndex = 1;
-        lastEndType = null;
-        log.info("文件不存在，创建新的process.json，从第1段开始录制");
-    }
+function clearCache() {
+    // BGI 的 file API 不支持删除文件，改用标志位方式
+    // 旧的 track-*.json 文件无害，新录制会从 track-1 开始覆盖
+    file.writeTextSync(CACHE_META, JSON.stringify({ cleared: true }));
 }
 
-// 从processData恢复steps列表
-function restoreStepsFromProcessData() {
-    for (const line of processData) {
-        if (line.startsWith('作者：')) continue;
+// 初始化录制数据（从缓存加载或全新开始）
+async function initProcessData() {
+    const meta = loadCacheMeta();
 
-        if (line.startsWith('地图追踪')) {
-            const filename = line.replace('地图追踪 ', '').trim();
-            steps.push({
-                id: Date.now() + Math.random(),
-                name: `Path: ${filename}`,
-                type: 'move',
-                data: filename,
-                start: ['?', '?'],
-                end: ['?', '?']
-            });
-        } else if (line === '战斗') {
-            steps.push({
-                id: Date.now() + Math.random(),
-                name: 'Combat Event',
-                type: 'fight',
-                data: null,
-                start: ['?', '?'],
-                end: ['?', '?']
-            });
-        } else if (line.startsWith('对话')) {
-            const npcName = line.replace('对话 ', '').trim();
-            steps.push({
-                id: Date.now() + Math.random(),
-                name: `Talk: ${npcName || 'NPC'}`,
-                type: 'ocr',
-                data: line,
-                start: ['?', '?'],
-                end: ['?', '?']
-            });
-        } else if (line === '暂停') {
-            steps.push({
-                id: Date.now() + Math.random(),
-                name: 'Paused',
-                type: 'pause',
-                data: null,
-                start: ['?', '?'],
-                end: ['?', '?']
-            });
-        } else if (line === '等待返回主界面') {
-            steps.push({
-                id: Date.now() + Math.random(),
-                name: 'Wait MainUI',
-                type: 'story',
-                data: null,
-                start: ['?', '?'],
-                end: ['?', '?']
-            });
-        }
+    if (meta && !meta.cleared) {
+        // 有未导出的缓存数据，恢复会话
+        questName = meta.questName || questName;
+        questLocation = meta.questLocation || questLocation;
+        currentStepIndex = meta.currentStepIndex || 1;
+        lastEndType = meta.lastEndType || null;
+        steps = meta.steps || [];
+        stepsDirty = true;
+        log.info(`从缓存恢复录制会话，共 ${steps.length} 个步骤，下一段: ${currentStepIndex}`);
+    } else {
+        // 全新录制
+        steps = [];
+        currentStepIndex = 1;
+        lastEndType = null;
+        log.info("开始新的录制会话");
     }
-    stepsDirty = true;
-    log.info(`从process.json恢复了 ${steps.length} 个步骤`);
+
+    // processData 不再在录制期间维护，仅在导出时生成
+    processData = [];
 }
 
 // 键鼠钩子
@@ -275,7 +163,6 @@ async function init() {
             const endTypeNames = {
                 'fight': '战斗',
                 'dialogue': '对话',
-                'pause': '暂停',
                 'save': '保存',
                 'story': '剧情'
             };
@@ -313,12 +200,10 @@ async function init() {
 
     // 4. 显示快捷键说明
     log.info("=== 快捷键说明 ===");
-    log.info(`${keyRecord}: 开始/暂停录制`);
-    log.info(`${keyRecordTp}: 开始录制(起点为传送点)`);
-    log.info(`${keySplit}: 路径分段保存`);
+    log.info(`${keyRecord}: 开始/结束录制`);
     log.info(`${keyOcr}: OCR对话标记`);
     log.info(`${keyFight}: 战斗标记`);
-    log.info(`${keyExport}: 导出并结束录制`);
+    log.info(`${keyExport}: 导出`);
     log.info("F12: 显示/隐藏HUD");
     log.info("====================");
 
@@ -332,15 +217,7 @@ function registerHotkeys() {
     hook.OnKeyDown((keyCode) => {
         switch (keyCode) {
             case keyRecord:
-                startWithTp = false;
                 toggleRecording();
-                break;
-            case keyRecordTp:
-                startWithTp = true;
-                toggleRecording();
-                break;
-            case keySplit:
-                splitSegment();
                 break;
             case keyOcr:
                 handleDialogue();
@@ -359,20 +236,19 @@ function registerHotkeys() {
 }
 
 function updateKeysStatus() {
-    keysConfig[0].active = isRecording && !startWithTp;
-    keysConfig[1].active = isRecording && startWithTp;
+    keysConfig[0].active = isRecording;
 }
 
-// 切换录制状态 (暂停/恢复)
+// 切换录制状态 (开始/结束)
 async function toggleRecording() {
     if (isProcessingAction) return;
     isProcessingAction = true;
     try {
         if (isRecording) {
-            // 正在录制 -> 暂停
-            await handlePause();
+            // 正在录制 -> 结束录制
+            await handleStopRecording();
         } else {
-            // 未录制/已暂停 -> 开始/恢复录制
+            // 未录制 -> 开始录制
             await handleResume();
         }
     } finally {
@@ -380,38 +256,31 @@ async function toggleRecording() {
     }
 }
 
-// 处理暂停
-async function handlePause() {
+// 结束录制（保存当前路径，停止录制）
+async function handleStopRecording() {
     if (!isRecording) return;
 
-    log.info("暂停录制...");
+    log.info("结束录制...");
 
     // 保存当前路径
     if (currentTrackData.positions.length > 0) {
-        const filename = await saveCurrentPath();
-        if (filename) {
-            addStepToList('move', `Path ${currentStepIndex - 1}`, filename);
-            processData.push(`地图追踪 ${filename}`);
+        const result = await saveCurrentPath();
+        if (result) {
+            addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
         }
     }
 
-    // 添加暂停标记
-    processData.push("暂停");
-    saveProcessData();
-
-    addStepToList('pause', 'Paused', null);
-
-    lastEndType = 'pause';
+    lastEndType = 'save';
     isRecording = false;
-    isPaused = true;
+    saveCacheMeta();
 
     updateHUD();
-    log.info("录制已暂停，按 " + keyRecord + " 恢复");
+    log.info("录制已结束，按 " + keyRecord + " 重新开始，按 " + keyExport + " 导出");
 }
 
-// 处理恢复录制
+// 处理开始录制
 async function handleResume() {
-    log.info("恢复/开始录制...");
+    log.info("开始录制...");
 
     // 确保在主界面
     if (!isInMainUI()) {
@@ -428,13 +297,11 @@ async function handleResume() {
     await startNewRecording();
 
     isRecording = true;
-    isPaused = false;
     lastEndType = null;
 
     updateHUD();
 
-    const tpInfo = startWithTp ? " (起点为传送点)" : "";
-    log.info(`录制已开始${tpInfo}，文件段: ${currentStepIndex}`);
+    log.info(`录制已开始，文件段: ${currentStepIndex}`);
 }
 
 // 开始新的录制段
@@ -452,7 +319,7 @@ async function startNewRecording() {
     const isFirstRecording = (currentStepIndex === 1);
     let initialPointType = "path";
 
-    if (startWithTp || (isFirstRecording && settings.forceTpFirst)) {
+    if (isFirstRecording && settings.forceTpFirst) {
         initialPointType = "teleport";
         log.info("起点设置为传送点");
     }
@@ -483,39 +350,6 @@ async function startNewRecording() {
     log.info(`新录制段开始: 类型=${initialPointType}, 坐标=(${position.X.toFixed(1)}, ${position.Y.toFixed(1)})`);
 }
 
-// 分段/保存
-async function splitSegment() {
-    if (isProcessingAction) return;
-    isProcessingAction = true;
-    try {
-        if (!isRecording) {
-            log.warn("未在录制状态，无法分段");
-            return;
-        }
-
-        if (currentTrackData.positions.length > 0) {
-            const startPos = currentTrackData.positions[0];
-            const endPos = currentTrackData.positions[currentTrackData.positions.length - 1];
-
-            const filename = await saveCurrentPath();
-            if (filename) {
-                addStepToList('move', `Path ${currentStepIndex - 1}`, filename, startPos, endPos);
-                processData.push(`地图追踪 ${filename}`);
-                saveProcessData();
-                log.info(`路径分段已保存: ${filename}`);
-            }
-        } else {
-            log.warn("当前无路径数据可保存");
-        }
-
-        // 开始新录制段
-        await startNewRecording();
-        log.info(`新段已开始: ${currentStepIndex}`);
-    } finally {
-        isProcessingAction = false;
-    }
-}
-
 // 处理对话功能 (完整版: OCR + 点击NPC)
 async function handleDialogue() {
     if (isProcessingAction) return;
@@ -528,16 +362,15 @@ async function handleDialogue() {
 
     log.info("处理对话功能...");
 
-    // 暂停录制
+    // 临时停止录制
     const wasRecording = isRecording;
     isRecording = false;
 
     // 保存当前路径
     if (currentTrackData.positions.length > 0) {
-        const filename = await saveCurrentPath();
-        if (filename) {
-            addStepToList('move', `Path ${currentStepIndex - 1}`, filename);
-            processData.push(`地图追踪 ${filename}`);
+        const result = await saveCurrentPath();
+        if (result) {
+            addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
         }
     }
 
@@ -569,12 +402,10 @@ async function handleDialogue() {
             }
         }
 
-        processData.push(`对话 ${npcName}`);
         addStepToList('ocr', `Talk: ${npcName}`, `对话 ${npcName}`);
     } else {
         log.warn("未能提取到NPC名称，添加默认对话指令");
-        processData.push("对话");
-        addStepToList('ocr', 'Dialogue', '对话');
+        addStepToList('ocr', '对话', '对话');
     }
 
     // 按F键触发剧情
@@ -582,7 +413,7 @@ async function handleDialogue() {
     keyPress("F");
     await sleep(500);
 
-    saveProcessData();
+    saveCacheMeta();
     lastEndType = 'dialogue';
 
     updateHUD();
@@ -595,7 +426,6 @@ async function handleDialogue() {
     if (wasRecording) {
         isRecording = true;
         lastEndType = null;
-        startWithTp = false;
         await startNewRecording();
         log.info("从对话返回，自动恢复录制");
     }
@@ -622,17 +452,13 @@ async function handleFight() {
         await genshin.returnMainUi();
 
         if (currentTrackData.positions.length > 0) {
-            const filename = await saveCurrentPath();
-            if (filename) {
-                addStepToList('move', `Path ${currentStepIndex - 1}`, filename);
-                processData.push(`地图追踪 ${filename}`);
+            const result = await saveCurrentPath();
+            if (result) {
+                addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
             }
         }
 
         // 添加战斗标记
-        processData.push("战斗");
-        saveProcessData();
-
         let pos = { x: 0, y: 0 };
         try {
             const p = genshin.getPositionFromMap();
@@ -640,6 +466,7 @@ async function handleFight() {
         } catch (e) { }
 
         addStepToList('fight', 'Combat Event', null, pos, pos);
+        saveCacheMeta();
 
         lastEndType = 'fight';
         isRecording = false;
@@ -663,7 +490,6 @@ async function handleFight() {
             // 自动恢复录制
             isRecording = true;
             lastEndType = null;
-            startWithTp = false;
             await startNewRecording();
             log.info("战斗结束，自动恢复录制");
             updateHUD();
@@ -681,26 +507,70 @@ async function handleEndRecording() {
     if (isProcessingAction) return;
     isProcessingAction = true;
     try {
-        log.info("结束录制并导出...");
+        log.info("导出录制数据...");
 
-        // 保存最后的路径
+        // 保存最后的路径（如有）
         if (currentTrackData.positions.length > 0) {
-            const filename = await saveCurrentPath();
-            if (filename) {
-                addStepToList('move', `Path ${currentStepIndex - 1}`, filename);
-                processData.push(`地图追踪 ${filename}`);
+            const result = await saveCurrentPath();
+            if (result) {
+                addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
             }
         }
 
-        saveProcessData();
+        // 生成最终目录
+        const exportFolder = `process/${questLocation}/${questName}`;
+
+        // 从 steps 生成 processData 并导出
+        processData = [`作者：${author}`];
+        let trackIndex = 1;
+
+        for (const step of steps) {
+            if (step.type === 'move') {
+                // 从缓存读取路径文件
+                const cacheFile = `${CACHE_FOLDER}/${step.data}`;
+                const finalName = step.nameModified ? step.name : `${questName}-${trackIndex}`;
+                const finalFilename = `${finalName}.json`;
+                const finalPath = `${exportFolder}/${finalFilename}`;
+
+                try {
+                    const trackContent = file.readTextSync(cacheFile);
+                    if (trackContent) {
+                        // 更新文件头中的 name
+                        const trackData = JSON.parse(trackContent);
+                        trackData.info.name = finalName;
+                        file.writeTextSync(finalPath, JSON.stringify(trackData, null, 2));
+                    }
+                } catch (e) {
+                    log.error(`导出路径文件失败: ${step.data} -> ${e.message}`);
+                }
+
+                processData.push(`地图追踪 ${finalFilename}`);
+                step.data = finalFilename; // 更新步骤中的文件名
+                trackIndex++;
+            } else if (step.type === 'fight') {
+                processData.push('战斗');
+            } else if (step.type === 'ocr') {
+                processData.push(step.data); // "对话 NPC名"
+            } else if (step.type === 'story') {
+                processData.push('等待返回主界面');
+            }
+        }
+
+        // 保存 process.json 到最终目录
+        const processPath = `${exportFolder}/process.json`;
+        file.writeTextSync(processPath, processData.join('\n'));
+
+        // 清理缓存
+        clearCache();
+
         lastEndType = 'save';
         isRecording = false;
 
         updateHUD();
-        notification.send("PathRecorder: 录制已结束，process.json已保存");
-        log.info("=== 录制已结束 ===");
-        log.info(`保存位置: process/${questLocation}/${questName}/`);
-        log.info(`共 ${steps.length} 个步骤`);
+        notification.send(`PathRecorder: 已导出到 ${exportFolder}/`);
+        log.info("=== 录制已导出 ===");
+        log.info(`保存位置: ${exportFolder}/`);
+        log.info(`共 ${steps.length} 个步骤，${trackIndex - 1} 个路径文件`);
     } finally {
         isProcessingAction = false;
     }
@@ -718,16 +588,14 @@ async function handleStoryInterface() {
         currentTrackData.positions[lastIdx].optimize = false;
 
         // 保存当前路径
-        const filename = await saveCurrentPath();
-        if (filename) {
-            addStepToList('move', `Path ${currentStepIndex - 1} (Story)`, filename);
-            processData.push(`地图追踪 ${filename}`);
-            processData.push("等待返回主界面");
-            saveProcessData();
+        const result = await saveCurrentPath();
+        if (result) {
+            addStepToList('move', `Path ${currentStepIndex - 1} (Story)`, result.filename, result.startPos, result.endPos);
         }
     }
 
     addStepToList('story', 'Wait MainUI', null);
+    saveCacheMeta();
 
     lastEndType = 'story';
     isRecording = false;
@@ -742,7 +610,6 @@ async function handleStoryInterface() {
     log.info("从剧情返回主界面，自动恢复录制");
     isRecording = true;
     lastEndType = null;
-    startWithTp = false;
     lastPosition = null;
     await startNewRecording();
 
@@ -772,6 +639,7 @@ function addStepToList(type, name, data, startPos = null, endPos = null) {
         name: name,
         type: type,
         data: data,
+        nameModified: false,
         start: startPos ? [startPos.x?.toFixed(0) || '?', startPos.y?.toFixed(0) || '?'] : ['?', '?'],
         end: endPos ? [endPos.x?.toFixed(0) || '?', endPos.y?.toFixed(0) || '?'] : ['?', '?']
     };
@@ -790,56 +658,35 @@ function toggleHUD() {
     }
 }
 
-// 保存当前路径到文件
+// 保存当前路径到缓存文件
 async function saveCurrentPath() {
     if (currentTrackData.positions.length === 0) return null;
+
+    // 捕获起止坐标（在清空前）
+    const startPos = currentTrackData.positions[0];
+    const endPos = currentTrackData.positions[currentTrackData.positions.length - 1];
 
     // 路径优化
     await processTrackData();
 
-    const filename = `${questName}-${currentStepIndex}.json`;
-    const fullFolder = `process/${questLocation}/${questName}`;
-    const fullPath = `${fullFolder}/${filename}`;
+    const cacheFilename = `track-${currentStepIndex}.json`;
+    const cachePath = `${CACHE_FOLDER}/${cacheFilename}`;
 
     // 更新文件头信息
-    currentTrackData.info.name = `${questName}-${currentStepIndex}`;
+    currentTrackData.info.name = `track-${currentStepIndex}`;
 
-    file.writeTextSync(fullPath, JSON.stringify(currentTrackData, null, 2));
+    file.writeTextSync(cachePath, JSON.stringify(currentTrackData, null, 2));
 
     // 重置数据
     currentTrackData.positions = [];
     lastPosition = null;
     currentStepIndex++;
 
-    return filename;
-}
-
-// 从 steps 列表重建 processData
-function rebuildProcessData() {
-    processData = [`作者：${author}`];
-    for (const step of steps) {
-        if (step.type === 'move') processData.push(`地图追踪 ${step.data}`);
-        else if (step.type === 'fight') processData.push('战斗');
-        else if (step.type === 'ocr') processData.push(step.data);
-        else if (step.type === 'pause') processData.push('暂停');
-        else if (step.type === 'story') processData.push('等待返回主界面');
-    }
-}
-
-// 保存process.json
-function saveProcessData() {
-    const processPath = `process/${questLocation}/${questName}/process.json`;
-    try {
-        const processText = processData.join('\n');
-        const success = file.writeTextSync(processPath, processText);
-        if (success) {
-            log.info(`process.json 已保存`);
-        }
-        return success;
-    } catch (error) {
-        log.error(`保存process.json失败: ${error.message}`);
-        return false;
-    }
+    return {
+        filename: cacheFilename,
+        startPos: { x: startPos.x, y: startPos.y },
+        endPos: { x: endPos.x, y: endPos.y }
+    };
 }
 
 // 处理收集到的路径数据
@@ -1058,7 +905,7 @@ async function mainLoop() {
 
             // 3. 录制逻辑（复用同一张截图检测移动状态，避免重复截屏）
             // 用 elementState 判断主界面，不再重复调用 isInMainUI()
-            if (isRecording && !isPaused && !isProcessingAction && elementState === ELEMENT_STATE.MAINUI) {
+            if (isRecording && !isProcessingAction && elementState === ELEMENT_STATE.MAINUI) {
                 try {
                     await recordPosition();
                 } catch (recErr) {
@@ -1097,10 +944,10 @@ async function mainLoop() {
     // 达到最大循环次数
     log.warn(`已达到最大运行次数限制 (${MAX_RECORDING_CYCLES})，自动保存并结束`);
     if (isRecording && currentTrackData.positions.length > 0) {
-        const filename = await saveCurrentPath();
-        if (filename) {
-            processData.push(`地图追踪 ${filename}`);
-            saveProcessData();
+        const result = await saveCurrentPath();
+        if (result) {
+            addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
+            saveCacheMeta();
         }
     }
 }
@@ -1214,11 +1061,10 @@ async function checkTeleport() {
 
         // 保存当前路径
         if (currentTrackData.positions.length > 0) {
-            const filename = await saveCurrentPath();
-            if (filename) {
-                addStepToList('move', `Path ${currentStepIndex - 1}`, filename);
-                processData.push(`地图追踪 ${filename}`);
-                saveProcessData();
+            const result = await saveCurrentPath();
+            if (result) {
+                addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
+                saveCacheMeta();
             }
         }
 
@@ -1293,8 +1139,7 @@ async function handleClientActions() {
                     if (idx !== -1) {
                         steps.splice(idx, 1);
                         stepsDirty = true;
-                        rebuildProcessData();
-                        saveProcessData();
+                        saveCacheMeta();
                         updateHUD();
                     }
                     break;
@@ -1302,23 +1147,21 @@ async function handleClientActions() {
                     const step = steps.find(s => s.id === action.id);
                     if (step) {
                         step.name = action.newName;
+                        step.nameModified = true;
                         stepsDirty = true;
+                        saveCacheMeta();
                         updateHUD();
                     }
                     break;
                 case 'update_task_name':
-                    if (steps.length > 0) {
-                        log.warn("已有录制数据，不允许修改任务名");
-                    } else {
-                        questName = action.name;
-                    }
+                    questName = action.name;
+                    saveCacheMeta();
                     break;
                 case 'undo':
                     if (steps.length > 0) {
                         steps.pop();
                         stepsDirty = true;
-                        rebuildProcessData();
-                        saveProcessData();
+                        saveCacheMeta();
                         updateHUD();
                     }
                     break;
@@ -1360,7 +1203,6 @@ async function updateHUD() {
 
         const stateData = {
             isRecording: isRecording,
-            isPaused: isPaused,
             lastEndType: lastEndType,
             taskName: questName,
             currentCoords: { x: displayPos.x, y: displayPos.y },
@@ -1397,11 +1239,8 @@ async function updateHUD() {
 function cleanUp() {
     if (hook) hook.Dispose();
     htmlPanel.closeAll();
-
-    if (processData.length > 1) {
-        saveProcessData();
-        log.info("Final process.json saved.");
-    }
+    saveCacheMeta();
+    log.info("缓存元数据已保存");
 }
 
 // 启动
