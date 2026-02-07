@@ -184,6 +184,27 @@ async function checkAbnormalState() {
   return MOVE_STATE.UNKNOWN;
 }
 
+// 轻量级界面状态检测（仅检测 Story 和 MAP，跳过菜单界面）
+async function checkElementStateLight() {
+  if (isInMainUI()) return ELEMENT_STATE.MAINUI;
+  const storyResult = await recognizeImage(getStoryRo());
+  if (storyResult.success) return ELEMENT_STATE.Story;
+  const mapResult = await recognizeImage(getMapRo());
+  if (mapResult.success) return ELEMENT_STATE.MAP;
+  return ELEMENT_STATE.UNKNOWN;
+}
+
+// 轻量级移动状态检测（跳过 isInMainUI 检查，调用方已保证在主界面）
+async function checkMoveStateOnly() {
+  const spaceResult = await recognizeImage(getSpaceRo());
+  const swimResult = await recognizeImage(getSwimRo());
+  const climbResult = await recognizeImage(getClimbRo());
+  if (swimResult.success) return MOVE_STATE.SWIM;
+  if (climbResult.success) return MOVE_STATE.CLIMB;
+  if (spaceResult.success) return MOVE_STATE.FLY;
+  return MOVE_STATE.NORMAL;
+}
+
 // 检测界面
 async function checkElementState() {
   if (!isInMainUI()) {
