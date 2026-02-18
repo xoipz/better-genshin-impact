@@ -168,14 +168,48 @@
         .icon-btn:hover { background: #d1d5db; }
         .icon-btn svg { width: 14px; height: 14px; fill: var(--genshin-text); }
 
+        /* Settings panel */
+        .settings-panel {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 4px;
+            background: var(--genshin-bg);
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 10px 14px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            z-index: 100;
+            min-width: 180px;
+        }
+        .settings-panel.open { display: block; }
+        .settings-panel label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .settings-panel input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+
         .hotkey-hint {
             font-size: 8px;
             margin-left: 2px;
             opacity: 0.6;
         }
 
-        ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+        * { scrollbar-width: none; }
+        ::-webkit-scrollbar { width: 0; height: 0; }
+        .step-list::-webkit-scrollbar { width: 2px; }
+        .step-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 10px; }
+        .step-list::-webkit-scrollbar-track { background: transparent; }
+        .step-list { scrollbar-width: thin; }
 
         .recording-dot.inactive {
             background: #9ca3af;
@@ -219,13 +253,18 @@
             backdrop-filter: none;
             padding: 8px;
             border-radius: 0;
+            width: fit-content;
+            height: fit-content;
+            transform: scale(var(--min-scale, 1));
+            transform-origin: top left;
         }
 
         .hud-container.minimized .section-left {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 6px;
+            gap: 0;
+            position: relative;
         }
 
         .hud-container.minimized .circle-container { flex: none; }
@@ -233,6 +272,7 @@
         .hud-container.minimized .circle-status {
             width: 110px;
             max-width: 110px;
+            background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, rgba(200,200,200,0.04) 100%);
         }
 
         .hud-container.minimized .section-info { display: none; }
@@ -246,6 +286,10 @@
             padding: 3px 10px;
             font-size: 11px;
             font-weight: bold;
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
         }
 
         .hud-container.minimized .section-keys {
@@ -254,7 +298,7 @@
             padding: 0;
         }
 
-        .hud-container.minimized .card-header { display: none; }
+        .hud-container.minimized .card-header { display: none !important; }
 
         .hud-container.minimized .key-item {
             background: rgba(236, 229, 216, 0.6);
@@ -274,7 +318,20 @@
         .hud-container.minimized .minimized-actions { display: block; }
         .hud-container.minimized .minimized-actions .key-item { cursor: pointer; }
 
-        .hud-container.minimized .section-log { display: none !important; }
+        .hud-container.minimized .section-log {
+            display: flex !important;
+            flex-direction: column;
+            gap: 0;
+            height: auto;
+            overflow: hidden;
+        }
+        .hud-container.minimized .section-log .hud-card {
+            background: rgba(236, 229, 216, 0.6);
+            border-radius: 10px;
+            padding: 6px 8px;
+        }
+        .hud-container.minimized .section-log .hud-card > div:first-child { display: none; }
+        .hud-container.minimized .section-log .step-list { max-height: 120px; }
     </style>
 </head>
 
@@ -317,11 +374,22 @@
 
         <!-- Column 2: Key Bindings -->
         <div class="hud-card section-keys">
-            <div class="card-header" style="font-size:11px;font-weight:700;margin-bottom:12px;border-bottom:1px solid #d1d5db;padding-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
+            <div class="card-header" style="font-size:11px;font-weight:700;margin-bottom:12px;border-bottom:1px solid #d1d5db;padding-bottom:4px;display:flex;justify-content:space-between;align-items:center;position:relative;">
                 <span>功能控制 [KEYS]</span>
-                <button class="icon-btn" onclick="exportData()" title="导出">
-                    <svg viewBox="0 0 24 24"><path d="M5 4v2h14V4H5zm0 10h4v6h6v-6h4l-7-7-7 7z"/></svg>
-                </button>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <button class="icon-btn" onclick="toggleSettings(event)" title="设置">
+                        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 00-.48-.41h-3.84a.48.48 0 00-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87a.48.48 0 00.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.6 3.6 0 0112 15.6z"/></svg>
+                    </button>
+                    <button class="icon-btn" onclick="exportData()" title="导出">
+                        <svg viewBox="0 0 24 24"><path d="M5 4v2h14V4H5zm0 10h4v6h6v-6h4l-7-7-7 7z"/></svg>
+                    </button>
+                </div>
+                <div id="settingsPanel" class="settings-panel">
+                    <label>
+                        <input type="checkbox" id="chkOptimizePath" onchange="toggleOptimizePath()" checked>
+                        优化路径
+                    </label>
+                </div>
             </div>
             <div id="keyBindings" style="flex:1;overflow-y:auto;"></div>
 
@@ -369,6 +437,20 @@
         window.clientAction = null;
         let lastPathPointsCount = 0;
 
+        // Minimized mode scaling: measure content at scale=1, then scale to fit viewport
+        function updateMinScale() {
+            const container = document.getElementById('hudContainer');
+            // 先重置为 1 以测量自然尺寸
+            container.style.setProperty('--min-scale', 1);
+            void container.offsetHeight; // 强制回流
+            const contentW = container.offsetWidth;
+            const contentH = container.offsetHeight;
+            if (contentW <= 0 || contentH <= 0) return;
+            // 按宽高分别计算缩放比，取较小值确保铺满一边且不溢出另一边
+            const scale = Math.min(window.innerWidth / contentW, window.innerHeight / contentH);
+            container.style.setProperty('--min-scale', scale);
+        }
+
         // Path drawing - current position at center, fixed scale
         function drawPath() {
             const canvas = document.getElementById('pathCanvas');
@@ -387,15 +469,6 @@
             const cx = size / 2;
             const cy = size / 2;
             const points = state.pathPoints || [];
-
-            // Current position indicator at center
-            ctx.beginPath();
-            ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#ef4444';
-            ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-            ctx.stroke();
 
             if (points.length < 1) return;
 
@@ -457,15 +530,6 @@
                     ctx.fill();
                 }
             }
-
-            // Redraw center on top
-            ctx.beginPath();
-            ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#ef4444';
-            ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-            ctx.stroke();
         }
 
         // External update entry
@@ -482,6 +546,7 @@
             if (newState.isMinimized !== undefined && newState.isMinimized !== isMinimized) {
                 isMinimized = newState.isMinimized;
                 document.getElementById('hudContainer').classList.toggle('minimized', isMinimized);
+                if (isMinimized) updateMinScale();
                 setTimeout(() => drawPath(), 50);
             }
 
@@ -503,6 +568,11 @@
 
             const taskInput = document.getElementById('taskNameInput');
             if (document.activeElement !== taskInput) taskInput.value = state.taskName;
+
+            // Sync settings
+            if (state.optimizePath !== undefined) {
+                document.getElementById('chkOptimizePath').checked = state.optimizePath;
+            }
 
             // Recording status
             const statusEl = document.getElementById('recordStatus');
@@ -536,8 +606,10 @@
 
             // Step list
             if (state.steps !== render.lastStepsRef) {
+                const isNew = render.lastStepsRef !== null && state.steps.length > (render.lastStepsRef ? render.lastStepsRef.length : 0);
                 render.lastStepsRef = state.steps;
-                document.getElementById('stepList').innerHTML = state.steps.map(s => `
+                const stepListEl = document.getElementById('stepList');
+                stepListEl.innerHTML = state.steps.map(s => `
                     <div class="step-item">
                         <div style="flex:1;min-width:0;padding-right:8px;">
                             <div style="font-weight:700;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;"
@@ -551,6 +623,7 @@
                         <div style="flex-shrink:0;cursor:pointer;font-size:14px;line-height:1;" onclick="deleteStep(${s.id})">x</div>
                     </div>
                 `).join('');
+                if (isNew) stepListEl.scrollTop = stepListEl.scrollHeight;
             }
 
             if (forceDrawPath || state.pathPoints.length !== render.lastPathCount) {
@@ -591,6 +664,23 @@
             }
         }
 
+        function toggleSettings(e) {
+            e.stopPropagation();
+            document.getElementById('settingsPanel').classList.toggle('open');
+        }
+
+        function toggleOptimizePath() {
+            window.clientAction = { type: 'toggle_optimize_path' };
+        }
+
+        // 点击面板外部关闭设置
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settingsPanel');
+            if (panel.classList.contains('open') && !panel.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+        });
+
         function undo() {
             window.clientAction = { type: 'undo' };
         }
@@ -603,7 +693,10 @@
             window.clientAction = { type: 'export' };
         }
 
-        window.addEventListener('resize', () => drawPath());
+        window.addEventListener('resize', () => {
+            if (isMinimized) updateMinScale();
+            drawPath();
+        });
     </script>
 </body>
 

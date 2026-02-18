@@ -30,6 +30,7 @@ let questName = settings.questName || "Task";
 let questLocation = settings.questLocation || "Mondstadt";
 const author = settings.author || "User";
 const autoFight = settings.autoFight !== false; // 默认启用自动战斗
+let optimizePath = true; // 默认启用路径优化（从缓存恢复）
 
 // 快捷键配置
 const keyRecord = settings.keyRecord || "F7";      // 开始/结束录制
@@ -37,20 +38,6 @@ const keyOcr = settings.keyOcr || "D9";            // OCR对话
 const keyFight = settings.keyFight || "F8";        // 战斗标记
 const keyExport = settings.keyExport || "F9";      // 导出/结束录制
 const keyTeleportStart = settings.keyTeleportStart || "D8"; // 以传送点开始录制
-
-// 游戏菜单映射 (用于检测特定界面) - 延迟获取避免加载顺序问题
-function getMenuStateMap() {
-    return {
-        "角色C": ELEMENT_STATE.C,
-        "背包B": ELEMENT_STATE.B,
-        "教程G": ELEMENT_STATE.G,
-        "好友O": ELEMENT_STATE.O,
-        "任务J": ELEMENT_STATE.J,
-        "联机F2": ELEMENT_STATE.F2,
-        "祈愿F3": ELEMENT_STATE.F3,
-        "纪行F4": ELEMENT_STATE.F4
-    };
-}
 
 // 快捷键配置显示
 const keysConfig = [
@@ -101,6 +88,7 @@ function saveCacheMeta() {
     const meta = {
         questName, questLocation, author,
         currentStepIndex, lastEndType,
+        optimizePath,
         steps: steps
     };
     file.writeTextSync(CACHE_META, JSON.stringify(meta, null, 2));
@@ -110,7 +98,9 @@ function loadCacheMeta() {
     try {
         const content = file.readTextSync(CACHE_META);
         if (content && content.trim()) return JSON.parse(content);
-    } catch (e) {}
+    } catch (e) {
+        log.warn(`加载缓存元数据失败: ${e.message}`);
+    }
     return null;
 }
 
@@ -131,6 +121,7 @@ async function initProcessData() {
         currentStepIndex = meta.currentStepIndex || 1;
         lastEndType = meta.lastEndType || null;
         steps = meta.steps || [];
+        if (meta.optimizePath !== undefined) optimizePath = meta.optimizePath;
         stepsDirty = true;
         log.info(`从缓存恢复录制会话，共 ${steps.length} 个步骤，下一段: ${currentStepIndex}`);
     } else {
@@ -322,6 +313,10 @@ async function handleTeleportStart() {
     try {
         log.info("以传送点开始录制...");
 
+        // 清除地图退出标志
+        justExitedMap = false;
+        wasInMap = false;
+
         // 确保在主界面
         if (!isInMainUI()) {
             await genshin.returnMainUi();
@@ -358,6 +353,10 @@ async function handleTeleportStart() {
         // 返回主界面
         await genshin.returnMainUi();
         await sleep(200);
+
+        // 再次清除地图追踪标志（打开大地图会触发主循环的地图追踪）
+        justExitedMap = false;
+        wasInMap = false;
 
         // 确定使用的坐标
         let startX, startY;
@@ -409,6 +408,10 @@ async function handleTeleportStart() {
 // 开始新的录制段
 async function startNewRecording() {
     log.info("开始新的录制段...");
+
+    // 清除地图退出标志，避免新段首个点被误判为传送
+    justExitedMap = false;
+    wasInMap = false;
 
     // 获取当前位置
     const position = genshin.getPositionFromMap();
@@ -462,77 +465,74 @@ async function handleDialogue() {
             return;
         }
 
-    log.info("处理对话功能...");
+        log.info("处理对话功能...");
 
-    // 临时停止录制
-    const wasRecording = isRecording;
-    isRecording = false;
+        // 临时停止录制
+        isRecording = false;
 
-    // 保存当前路径
-    if (currentTrackData.positions.length > 0) {
-        const result = await saveCurrentPath();
-        if (result) {
-            addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
-        }
-    }
-
-    // 确保在主界面
-    await genshin.returnMainUi();
-    await sleep(200);
-
-    // 从游戏界面OCR提取NPC名称
-    const npcName = await extractNPCNameFromTask();
-
-    if (npcName) {
-        log.info(`提取到NPC名称: ${npcName}`);
-
-        // 尝试在对话区域找到并点击NPC
-        const dialogRegion = { X: 1150, Y: 300, WIDTH: 350, HEIGHT: 400 };
-        let dialogResults = await Utils.easyOCR(dialogRegion);
-
-        for (let i = 0; i < dialogResults.count; i++) {
-            let text = dialogResults[i].text;
-            let res = dialogResults[i];
-            if (text.includes(npcName)) {
-                log.info(`点击NPC选项: ${text}`);
-                keyDown("VK_MENU");
-                await sleep(500);
-                click(res.x, res.y);
-                leftButtonClick();
-                keyUp("VK_MENU");
-                break;
+        // 保存当前路径
+        if (currentTrackData.positions.length > 0) {
+            const result = await saveCurrentPath();
+            if (result) {
+                addStepToList('move', `Path ${currentStepIndex - 1}`, result.filename, result.startPos, result.endPos);
             }
         }
 
-        addStepToList('ocr', `Talk: ${npcName}`, `对话 ${npcName}`);
-    } else {
-        log.warn("未能提取到NPC名称，添加默认对话指令");
-        addStepToList('ocr', '对话', '对话');
-    }
+        // 确保在主界面
+        await genshin.returnMainUi();
+        await sleep(200);
 
-    // 按F键触发剧情
-    log.info("按下F键触发剧情");
-    keyPress("F");
-    await sleep(500);
+        // 从游戏界面OCR提取NPC名称
+        const npcName = await extractNPCNameFromTask();
 
-    saveCacheMeta();
-    lastEndType = 'dialogue';
+        if (npcName) {
+            log.info(`提取到NPC名称: ${npcName}`);
 
-    updateHUD();
-    log.info("对话标记已添加，等待剧情结束...");
+            // 尝试在对话区域找到并点击NPC
+            const dialogRegion = { X: 1150, Y: 300, WIDTH: 350, HEIGHT: 400 };
+            let dialogResults = await Utils.easyOCR(dialogRegion);
 
-    // 等待返回主界面
-    await waitForMainUI();
+            for (let i = 0; i < dialogResults.count; i++) {
+                let text = dialogResults[i].text;
+                let res = dialogResults[i];
+                if (text.includes(npcName)) {
+                    log.info(`点击NPC选项: ${text}`);
+                    keyDown("VK_MENU");
+                    await sleep(500);
+                    click(res.x, res.y);
+                    leftButtonClick();
+                    keyUp("VK_MENU");
+                    break;
+                }
+            }
 
-    // 自动恢复录制
-    if (wasRecording) {
+            addStepToList('ocr', `Talk: ${npcName}`, `对话 ${npcName}`);
+        } else {
+            log.warn("未能提取到NPC名称，添加默认对话指令");
+            addStepToList('ocr', '对话', '对话');
+        }
+
+        // 按F键触发剧情
+        log.info("按下F键触发剧情");
+        keyPress("F");
+        await sleep(500);
+
+        saveCacheMeta();
+        lastEndType = 'dialogue';
+
+        updateHUD();
+        log.info("对话标记已添加，等待剧情结束...");
+
+        // 等待返回主界面
+        await waitForMainUI();
+
+        // 自动恢复录制
         isRecording = true;
         lastEndType = null;
         await startNewRecording();
         log.info("从对话返回，自动恢复录制");
-    }
 
-    updateHUD();
+        updateHUD();
     } finally {
         isProcessingAction = false;
     }
@@ -680,42 +680,48 @@ async function handleEndRecording() {
 
 // 处理剧情界面
 async function handleStoryInterface() {
-    log.info("检测到剧情界面，处理特殊逻辑...");
+    if (isProcessingAction) return;
+    isProcessingAction = true;
+    try {
+        log.info("检测到剧情界面，处理特殊逻辑...");
 
-    if (currentTrackData.positions.length > 0) {
-        // 在最后一个路径点添加combat_script动作
-        const lastIdx = currentTrackData.positions.length - 1;
-        currentTrackData.positions[lastIdx].action = "combat_script";
-        currentTrackData.positions[lastIdx].action_params = strategyScript;
-        currentTrackData.positions[lastIdx].optimize = false;
+        if (currentTrackData.positions.length > 0) {
+            // 在最后一个路径点添加combat_script动作
+            const lastIdx = currentTrackData.positions.length - 1;
+            currentTrackData.positions[lastIdx].action = "combat_script";
+            currentTrackData.positions[lastIdx].action_params = strategyScript;
+            currentTrackData.positions[lastIdx].optimize = false;
 
-        // 保存当前路径
-        const result = await saveCurrentPath();
-        if (result) {
-            addStepToList('move', `Path ${currentStepIndex - 1} (Story)`, result.filename, result.startPos, result.endPos);
+            // 保存当前路径
+            const result = await saveCurrentPath();
+            if (result) {
+                addStepToList('move', `Path ${currentStepIndex - 1} (Story)`, result.filename, result.startPos, result.endPos);
+            }
         }
+
+        addStepToList('story', 'Wait MainUI', null);
+        saveCacheMeta();
+
+        lastEndType = 'story';
+        isRecording = false;
+
+        log.info("剧情界面处理完成，等待返回主界面");
+        updateHUD();
+
+        // 等待返回主界面
+        await waitForMainUI();
+
+        // 自动恢复录制
+        log.info("从剧情返回主界面，自动恢复录制");
+        isRecording = true;
+        lastEndType = null;
+        lastPosition = null;
+        await startNewRecording();
+
+        updateHUD();
+    } finally {
+        isProcessingAction = false;
     }
-
-    addStepToList('story', 'Wait MainUI', null);
-    saveCacheMeta();
-
-    lastEndType = 'story';
-    isRecording = false;
-
-    log.info("剧情界面处理完成，等待返回主界面");
-    updateHUD();
-
-    // 等待返回主界面
-    await waitForMainUI();
-
-    // 自动恢复录制
-    log.info("从剧情返回主界面，自动恢复录制");
-    isRecording = true;
-    lastEndType = null;
-    lastPosition = null;
-    await startNewRecording();
-
-    updateHUD();
 }
 
 // 等待返回主界面
@@ -795,8 +801,12 @@ async function saveCurrentPath() {
 async function processTrackData() {
     log.info("处理路径数据...");
 
-    // 1. 先优化点
-    optimizePathPoints();
+    // 1. 路径点优化（可通过设置关闭）
+    if (optimizePath) {
+        optimizePathPoints();
+    } else {
+        log.info("路径优化已关闭，保留全部原始点位");
+    }
 
     // 2. 处理移动模式
     processMoveModes();
@@ -989,11 +999,11 @@ async function mainLoop() {
             // 2. 单次截屏，用于本周期所有检测（5次截屏→1次）
             beginDetectionCycle();
 
-            let elementState = ELEMENT_STATE.MAINUI;
+            let elementState = ELEMENT_STATE.UNKNOWN;
             try {
                 elementState = await checkElementStateLight();
             } catch (stateErr) {
-                // 界面检测失败时使用默认值，避免阻塞
+                // 界面检测失败时使用UNKNOWN，避免黑屏时误录制
             }
 
             // 追踪地图状态
@@ -1071,7 +1081,6 @@ async function recordPosition() {
         const moveState = await checkMoveStateOnly();
 
         let pointType = "path";
-        let optimizeFlag = true;
 
         // 从地图退出后的传送检测
         if (justExitedMap) {
@@ -1103,10 +1112,6 @@ async function recordPosition() {
             state: moveState,
             timestamp: Date.now()
         };
-
-        if (!optimizeFlag) {
-            point.optimize = false;
-        }
 
         // 处理移动模式
         if (moveState === MOVE_STATE.FLY) point.move_mode = "fly";
@@ -1160,6 +1165,10 @@ async function autoSplitTeleport(fallbackPos) {
 
     await genshin.returnMainUi();
     await sleep(200);
+
+    // 清除地图追踪标志，避免主循环再次检测到"离开地图"而重复触发传送分段
+    justExitedMap = false;
+    wasInMap = false;
 
     // 确定使用的坐标
     let tpX, tpY;
@@ -1250,6 +1259,12 @@ async function handleClientActions() {
                     }
                     updateHUD();
                     break;
+                case 'toggle_optimize_path':
+                    optimizePath = !optimizePath;
+                    saveCacheMeta();
+                    updateHUD();
+                    log.info(`路径优化: ${optimizePath ? '开启' : '关闭'}`);
+                    break;
                 case 'export':
                     handleEndRecording();
                     break;
@@ -1294,7 +1309,8 @@ async function updateHUD() {
             keys: keysConfig.filter(k => k.visible !== false),
             cycleCount: cycleCount,
             pathPoints: pathPoints,
-            isMinimized: isMinimized
+            isMinimized: isMinimized,
+            optimizePath: optimizePath
         };
 
         if (steps.length !== lastSentStepCount || stepsDirty) {
@@ -1335,6 +1351,7 @@ function cleanUp() {
         await init();
     } catch (e) {
         log.error("Init Error: " + e.message);
+    } finally {
         cleanUp();
     }
 })();
