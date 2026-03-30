@@ -418,13 +418,20 @@ public class AutoFightTask : ISoloTask
                             fightEndFlag = await CheckFightFinish(delayTime, detectDelayTime);
                         }
                         #endregion
-                        
+
                         command.Execute(combatScenes, lastCommand);
                         //统计战斗人次
                         if (i == combatCommands.Count - 1 || command.Name != combatCommands[i + 1].Name)
                         {
                             countFight++;
                         }
+
+                        #region check动作触发战斗结束检测
+                        if (command.Method == Method.Check)
+                        {
+                            fightEndFlag = await CheckFightFinish(delayTime, detectDelayTime);
+                        }
+                        #endregion
 
                         lastFightName = command.Name;
                         if (!fightEndFlag && _taskParam is { FightFinishDetectEnabled: true })
@@ -729,7 +736,7 @@ public class AutoFightTask : ISoloTask
 
         if (_taskParam is { PickDropsAfterFightEnabled: true } )
         {
-            // 执行自动拾取掉落物的功能
+            // 执行扫描掉落物光柱并靠近的功能
             await new ScanPickTask().Start(ct);
         }
     }
